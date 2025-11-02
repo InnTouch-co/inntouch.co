@@ -2,8 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  // Production domain configuration
-  output: 'standalone',
   // Enable if using custom domain with SSL
   async headers() {
     return [
