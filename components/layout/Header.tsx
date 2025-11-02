@@ -53,16 +53,7 @@ export function Header() {
 
   return (
     <header className="fixed top-0 left-64 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-10">
-      {/* Left: Logo and Site */}
-      <div className="flex items-center space-x-4">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold text-sm">IT</span>
-        </div>
-        <div>
-          <div className="text-sm font-semibold text-gray-900">InnTouch</div>
-          <div className="text-xs text-gray-500">app.inntouch.app</div>
-        </div>
-      </div>
+      
 
       {/* Center: Empty for now */}
       <div className="flex-1"></div>

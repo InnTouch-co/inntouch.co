@@ -2,7 +2,6 @@ import { supabase } from '@/lib/supabase/client'
 import type { User, UserInsert } from '@/types/database'
 
 export async function getUsers() {
-  // Force fresh data by clearing any potential cache and adding timestamp
   const { data, error } = await supabase
     .from('users')
     .select('*')

@@ -9,9 +9,10 @@ interface ModalProps {
   title: string
   children: React.ReactNode
   size?: 'sm' | 'md' | 'lg'
+  closeOnOutsideClick?: boolean
 }
 
-export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, size = 'md', closeOnOutsideClick = true }: ModalProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden'
@@ -35,7 +36,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
       onClick={(e) => {
-        if (e.target === e.currentTarget) {
+        if (closeOnOutsideClick && e.target === e.currentTarget) {
           onClose()
         }
       }}
@@ -46,9 +47,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
       >
         <div className="flex items-center justify-between p-6 border-b flex-shrink-0">
           <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
-          <Button variant="outline" size="sm" onClick={onClose}>
-            ✕
-          </Button>
+          {closeOnOutsideClick && (
+            <Button variant="outline" size="sm" onClick={onClose}>
+              ✕
+            </Button>
+          )}
         </div>
         <div className="p-6 overflow-y-auto flex-1">{children}</div>
       </div>

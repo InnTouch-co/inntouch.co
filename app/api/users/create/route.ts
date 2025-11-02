@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
       utype_id: utype_id || 'admin',
       active: active ?? 1,
       role_id: role_id || 'hotel_admin', // Default to hotel_admin
+      must_change_password: true, // Force password change on first login
     })
 
     // Assign hotels if provided

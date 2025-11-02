@@ -9,23 +9,37 @@ export async function getHotels() {
 
   if (error) throw error
   
-  // Get actual user counts for each hotel
+  // Get actual user counts and room counts for each hotel
   const hotelsWithCounts = await Promise.all(
     (data as Hotel[]).map(async (hotel) => {
-      const { count } = await supabase
-        .from('hotel_users')
-        .select('*', { count: 'exact', head: true })
-        .eq('hotel_id', hotel.id)
-        .eq('is_deleted', false)
+      const [userCountResult, roomCountResult] = await Promise.all([
+        supabase
+          .from('hotel_users')
+          .select('*', { count: 'exact', head: true })
+          .eq('hotel_id', hotel.id)
+          .eq('is_deleted', false),
+        supabase
+          .from('rooms')
+          .select('*', { count: 'exact', head: true })
+          .eq('hotel_id', hotel.id)
+          .eq('is_deleted', false)
+      ])
+      
+      // Use stored room_count if available, otherwise count from rooms table
+      const storedRoomCount = hotel.room_count || 0
+      const actualRoomCount = roomCountResult.count || 0
+      // Prefer stored value, but if both are 0, show stored (which might be manually set)
+      const finalRoomCount = storedRoomCount > 0 ? storedRoomCount : actualRoomCount
       
       return {
         ...hotel,
-        user_count: count || 0
+        user_count: userCountResult.count || 0,
+        room_count: finalRoomCount
       }
     })
   )
   
-  return hotelsWithCounts as (Hotel & { user_count: number })[]
+  return hotelsWithCounts as (Hotel & { user_count: number; room_count: number })[]
 }
 
 export async function getHotelById(id: string) {

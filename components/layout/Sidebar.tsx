@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { getCurrentUserClient } from '@/lib/auth/auth-client'
+import { usePathname, useRouter } from 'next/navigation'
+import { getCurrentUserClient, signOut } from '@/lib/auth/auth-client'
 import { extractTextFromJson } from '@/lib/utils/json-text'
 import { getRoleDisplayName } from '@/lib/auth/roles'
+import { supabase } from '@/lib/supabase/client'
+import { getHotels } from '@/lib/database/hotels'
 
 // Super User navigation items
 const superAdminNavItems = [
@@ -25,7 +27,9 @@ const hotelAdminNavItems = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const [user, setUser] = useState<any>(null)
+  const [userHotel, setUserHotel] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -36,6 +40,11 @@ export function Sidebar() {
     try {
       const currentUser = await getCurrentUserClient()
       setUser(currentUser)
+      
+      // If user is staff, load their hotel information
+      if (currentUser?.role_id && ['staff', 'front_desk', 'housekeeping', 'maintenance'].includes(currentUser.role_id)) {
+        await loadUserHotel(currentUser.id)
+      }
     } catch (error) {
       console.error('Failed to load user:', error)
     } finally {
@@ -43,9 +52,33 @@ export function Sidebar() {
     }
   }
 
+  const loadUserHotel = async (userId: string) => {
+    try {
+      // Get hotel assignment for this user
+      const { data: userAssignments } = await supabase
+        .from('hotel_users')
+        .select('hotel_id')
+        .eq('user_id', userId)
+        .eq('is_deleted', false)
+        .limit(1)
+      
+      if (userAssignments && userAssignments.length > 0) {
+        const hotelId = userAssignments[0].hotel_id
+        const hotels = await getHotels()
+        const hotel = hotels.find(h => h.id === hotelId)
+        if (hotel) {
+          setUserHotel(hotel)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load user hotel:', error)
+    }
+  }
+
   // Determine which nav items to show based on user role
   const isSuperAdmin = user?.role_id === 'super_admin'
   const isHotelAdmin = user?.role_id === 'hotel_admin'
+  const isStaff = user?.role_id && ['staff', 'front_desk', 'housekeeping', 'maintenance'].includes(user.role_id)
   const navItems = isSuperAdmin ? superAdminNavItems : hotelAdminNavItems
 
   // Get user initials for avatar
@@ -57,6 +90,16 @@ export function Sidebar() {
       return (parts[0][0] + parts[1][0]).toUpperCase()
     }
     return name.substring(0, 2).toUpperCase()
+  }
+
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      router.push('/login')
+      router.refresh()
+    } catch (error) {
+      console.error('Logout error:', error)
+    }
   }
 
   if (loading) {
@@ -116,7 +159,7 @@ export function Sidebar() {
       {/* User Profile Section */}
       {user && (
         <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 mb-3">
             <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
               <span className="text-gray-600 font-semibold text-sm">{getUserInitials()}</span>
             </div>
@@ -125,8 +168,27 @@ export function Sidebar() {
                 {extractTextFromJson(user.name)}
               </div>
               <div className="text-xs text-gray-500 truncate">{user.email || ''}</div>
+              {isStaff && userHotel && (
+                <div className="text-xs text-gray-500 truncate mt-1 flex items-center gap-1">
+                  <span>{extractTextFromJson(userHotel.title)}</span>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span>{getRoleDisplayName(user.role_id || '')}</span>
+                </div>
+              )}
             </div>
           </div>
+          <button
+            onClick={handleLogout}
+            className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center gap-2"
+            title="Sign Out"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            <span>Sign Out</span>
+          </button>
         </div>
       )}
     </aside>

@@ -9,6 +9,7 @@ export interface Hotel {
   address?: string | null
   phone?: string | null
   active: boolean
+  room_count?: number | null
   created_at: string
   updated_at?: string | null
 }
@@ -24,6 +25,7 @@ export interface User {
   role_id?: string | null
   active: number
   is_deleted: boolean
+  must_change_password?: boolean | null
   created_at: string
   updated_at?: string | null
 }
@@ -79,6 +81,7 @@ export type UserInsert =
   Omit<User, 'id' | 'created_at' | 'updated_at' | 'password' | 'remember_token' | 'is_deleted' | 'active'> & {
     is_deleted?: boolean  // Make optional since it has a default value in database
     active?: number  // Make optional since it has a default value
+    must_change_password?: boolean  // Make optional since it has a default value in database
   }
 export type ProductInsert = Omit<Product, 'id' | 'created_at' | 'updated_at'>
 export type ServiceInsert = Omit<Service, 'id' | 'created_at' | 'updated_at'>

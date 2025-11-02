@@ -153,6 +153,13 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
     throw new Error('Email sending not configured. Please set RESEND_API_KEY or configure Supabase Edge Function.')
   }
 
+  // Warn if using test email (but allow it for testing to own email)
+  if (fromEmail.includes('@resend.dev') || fromEmail === 'onboarding@resend.dev') {
+    console.warn(`⚠️ Using test email address: ${fromEmail}`)
+    console.warn(`⚠️ Test emails can only be sent to your verified email address (beksultanggd@gmail.com)`)
+    console.warn(`⚠️ To send to other recipients, set RESEND_FROM_EMAIL to your verified domain (e.g., noreply@yourdomain.com)`)
+  }
+
   try {
     // Dynamically import Resend to avoid errors if not installed
     const { Resend } = await import('resend')
@@ -174,7 +181,26 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
 
     if (result.error) {
       console.error('❌ Failed to send email:', result.error)
-      throw new Error(`Failed to send email: ${result.error.message || 'Unknown error'}`)
+      
+      // Provide helpful error message for domain verification issues
+      const errorMessage = result.error.message || 'Unknown error'
+      if (errorMessage.includes('only send testing emails') || errorMessage.includes('verify a domain')) {
+        const helpfulError = `Email sending failed: ${errorMessage}\n\n` +
+          `To fix this:\n` +
+          `1. Your domain is verified in Resend ✓\n` +
+          `2. Update your .env.local file with your verified domain email:\n` +
+          `   RESEND_FROM_EMAIL=noreply@yourdomain.com\n` +
+          `   (Replace 'yourdomain.com' with your actual verified domain)\n` +
+          `3. Restart your development server (npm run dev)\n` +
+          `4. Common verified domain formats:\n` +
+          `   - noreply@yourdomain.com\n` +
+          `   - hello@yourdomain.com\n` +
+          `   - notifications@yourdomain.com`
+        console.error('❌', helpfulError)
+        throw new Error(helpfulError)
+      }
+      
+      throw new Error(`Failed to send email: ${errorMessage}`)
     }
 
     if (result.data?.id) {
