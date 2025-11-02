@@ -25,27 +25,17 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Build
+    - name: Install Netlify CLI
+      run: npm install -g netlify-cli
+      
+    - name: Deploy to Netlify
       env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         NEXT_PUBLIC_APP_URL: https://inntouch.co
       run: |
-        npm run build
-        echo "Build completed!"
-      
-    - name: Deploy to Netlify
-      uses: nwtgck/actions-netlify@v3.0
-      with:
-        publish-dir: './.next'
-        production-branch: main
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        deploy-message: "Deploy from GitHub Actions"
-        enable-pull-request-comment: false
-        enable-commit-comment: true
-        overwrites-pull-request-comment: true
-      env:
-        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-      timeout-minutes: 1
+        netlify deploy --build --prod
+      timeout-minutes: 10
 
