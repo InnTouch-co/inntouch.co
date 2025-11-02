@@ -21,6 +21,7 @@ export interface User {
   password?: string | null
   remember_token?: string | null
   utype_id: string
+  role_id?: string | null
   active: number
   is_deleted: boolean
   created_at: string
