@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/Input'
 import { extractTextFromJson, textToJson } from '@/lib/utils/json-text'
+import { formatPhoneNumber } from '@/lib/utils/phone-mask'
 import { getHotels } from '@/lib/database/hotels'
 import { SearchableHotelSelector } from './SearchableHotelSelector'
 import { supabase } from '@/lib/supabase/client'
@@ -27,7 +28,7 @@ export function UserFormPage({ user, onSubmit, onCancel }: UserFormPageProps) {
   // Basic Info fields
   const [name, setName] = useState(user?.name ? extractTextFromJson(user.name) : '')
   const [email, setEmail] = useState(user?.email || '')
-  const [phone, setPhone] = useState('')
+  const [phone, setPhone] = useState(user?.phone ? formatPhoneNumber(user.phone) : '')
   const [status, setStatus] = useState(user?.active ?? 1)
   
   // Permissions fields
@@ -82,6 +83,7 @@ export function UserFormPage({ user, onSubmit, onCancel }: UserFormPageProps) {
       const userData: any = {
         name: textToJson(name),
         email: email || null,
+        phone: phone || null,
         utype_id: 'admin',
         active: status,
         role_id: role || 'hotel_admin',
@@ -208,7 +210,7 @@ export function UserFormPage({ user, onSubmit, onCancel }: UserFormPageProps) {
               label="Phone"
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
               placeholder="+1 (555) 123-4567"
             />
           </div>

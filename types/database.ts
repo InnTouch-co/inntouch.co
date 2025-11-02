@@ -18,6 +18,7 @@ export interface User {
   id: string
   name: Json
   email?: string | null
+  phone?: string | null
   email_verified_at?: string | null
   password?: string | null
   remember_token?: string | null

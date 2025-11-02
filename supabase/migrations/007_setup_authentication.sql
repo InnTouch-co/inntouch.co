@@ -36,3 +36,4 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NU
 -- Add index on role_id for faster role-based queries
 CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id) WHERE role_id IS NOT NULL;
 
+

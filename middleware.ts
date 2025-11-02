@@ -26,7 +26,38 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Refresh session
+  // Get session to check expiration
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  // Check if session exists and is expired or older than 1 hour
+  if (session) {
+    const currentTime = Math.floor(Date.now() / 1000)
+    const sessionExpiry = session.expires_at || 0
+    
+    // Check if session has expired
+    if (sessionExpiry <= currentTime) {
+      // Session expired, sign out
+      await supabase.auth.signOut()
+      const redirectUrl = new URL('/login', request.url)
+      redirectUrl.searchParams.set('error', 'session_expired')
+      return NextResponse.redirect(redirectUrl)
+    }
+    
+    // Check if session is older than 1 hour (3600 seconds)
+    // Calculate age from session creation (expires_at - default session duration)
+    const sessionCreatedAt = sessionExpiry - 3600 // Supabase default session is 1 hour
+    const sessionAge = currentTime - sessionCreatedAt
+    
+    if (sessionAge >= 3600) {
+      // Session is 1 hour or older, sign out
+      await supabase.auth.signOut()
+      const redirectUrl = new URL('/login', request.url)
+      redirectUrl.searchParams.set('error', 'session_expired')
+      return NextResponse.redirect(redirectUrl)
+    }
+  }
+  
+  // Refresh session and get user
   const { data: { user: authUser } } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname

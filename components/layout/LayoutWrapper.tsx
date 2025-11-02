@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar } from './Sidebar'
 import { PasswordChangeModal } from '@/components/auth/PasswordChangeModal'
-import { getCurrentUserClient } from '@/lib/auth/auth-client'
+import { getCurrentUserClient, signOut } from '@/lib/auth/auth-client'
+import { supabase } from '@/lib/supabase/client'
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -20,6 +21,64 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       setCheckingPassword(false)
     }
   }, [isLoginPage])
+
+  // Check session timeout - logout after 1 hour from login
+  useEffect(() => {
+    if (isLoginPage) return
+
+    const checkSessionTimeout = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!session) {
+          router.push('/login')
+          return
+        }
+
+        const currentTime = Math.floor(Date.now() / 1000)
+        const sessionExpiry = session.expires_at || 0
+        
+        // Get login timestamp from localStorage or use session expiry minus 1 hour as fallback
+        const loginTimeKey = `login_time_${session.user.id}`
+        let loginTimestamp = sessionExpiry - 3600 // Default: assume 1 hour session
+        
+        if (typeof window !== 'undefined') {
+          const storedLoginTime = localStorage.getItem(loginTimeKey)
+          if (storedLoginTime) {
+            loginTimestamp = parseInt(storedLoginTime, 10)
+          } else {
+            // Store current login time if not stored
+            loginTimestamp = currentTime
+            localStorage.setItem(loginTimeKey, loginTimestamp.toString())
+          }
+        }
+
+        // Calculate session age
+        const sessionAge = currentTime - loginTimestamp
+        const oneHourInSeconds = 3600
+        
+        // Check if session expired or is older than 1 hour
+        if (sessionExpiry <= currentTime || sessionAge >= oneHourInSeconds) {
+          // Clear login timestamp and logout
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(loginTimeKey)
+          }
+          await signOut()
+          router.push('/login?error=session_expired')
+        }
+      } catch (error) {
+        console.error('Error checking session timeout:', error)
+      }
+    }
+
+    // Check immediately
+    checkSessionTimeout()
+
+    // Check every 30 seconds
+    const interval = setInterval(checkSessionTimeout, 30000)
+
+    return () => clearInterval(interval)
+  }, [isLoginPage, router])
 
   const checkPasswordChangeRequired = async () => {
     try {

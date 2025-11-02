@@ -21,6 +21,13 @@ export default function LoginPage() {
     try {
       const result = await signIn(email, password)
       
+      // Store login timestamp for session timeout tracking
+      if (result.user?.id) {
+        const loginTimeKey = `login_time_${result.user.id}`
+        const loginTimestamp = Math.floor(Date.now() / 1000)
+        localStorage.setItem(loginTimeKey, loginTimestamp.toString())
+      }
+      
       // Wait a moment for cookies to be set
       await new Promise(resolve => setTimeout(resolve, 100))
       
@@ -53,10 +60,22 @@ export default function LoginPage() {
             
             {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('error') && (
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
-                <strong>Access Error:</strong> {new URLSearchParams(window.location.search).get('error')}
-                <div className="mt-2 text-xs">
-                  Make sure you've created your user record in the database. See AUTH_SETUP.md for instructions.
-                </div>
+                <strong>
+                  {new URLSearchParams(window.location.search).get('error') === 'session_expired' 
+                    ? 'Session Expired' 
+                    : 'Access Error'}
+                </strong>
+                {new URLSearchParams(window.location.search).get('error') === 'session_expired' ? (
+                  <div className="mt-2 text-xs">
+                    Your session has expired after 1 hour of inactivity. Please sign in again.
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs">
+                    {new URLSearchParams(window.location.search).get('error')}
+                    <br />
+                    Make sure you've created your user record in the database. See AUTH_SETUP.md for instructions.
+                  </div>
+                )}
               </div>
             )}
 

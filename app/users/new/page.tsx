@@ -32,13 +32,17 @@ export default function NewUserPage() {
 
       const result = await response.json()
       
-      // Show success message
-      if (result.emailContent) {
-        console.log('User created! Email invitation:', {
-          to: result.emailContent.to,
-          subject: result.emailContent.subject,
-        })
-        alert(`User created successfully! An invitation email has been sent to ${result.user.email}`)
+      // Show appropriate message based on email sending result
+      if (result.warning || result.error) {
+        // Email sending failed, but user was created
+        console.warn('User created but email failed:', result.error || result.warning)
+        alert(`User created successfully, but email sending failed.\n\n${result.error || result.warning}\n\nPassword: ${result.password || 'N/A'}\n\nPlease share the password with the user manually.`)
+      } else if (result.message) {
+        // Success with email sent
+        alert(`User created successfully! Invitation email has been sent to ${result.user.email}`)
+      } else {
+        // Generic success
+        alert('User created successfully!')
       }
       
       router.push('/users')

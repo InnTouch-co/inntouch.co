@@ -94,6 +94,12 @@ export function Sidebar() {
 
   const handleLogout = async () => {
     try {
+      // Clear login timestamp from localStorage
+      if (user?.id && typeof window !== 'undefined') {
+        const loginTimeKey = `login_time_${user.id}`
+        localStorage.removeItem(loginTimeKey)
+      }
+      
       await signOut()
       router.push('/login')
       router.refresh()

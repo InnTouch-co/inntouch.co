@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, email, utype_id, active, hotelIds, role_id } = body
+    const { name, email, phone, utype_id, active, hotelIds, role_id } = body
 
     if (!name || !email) {
       return NextResponse.json(
@@ -80,11 +80,12 @@ export async function POST(request: NextRequest) {
     const userData = await createUser({
       name: typeof name === 'string' ? textToJson(name) : name,
       email,
+      phone: phone || null,
       utype_id: utype_id || 'admin',
       active: active ?? 1,
       role_id: role_id || 'hotel_admin', // Default to hotel_admin
       must_change_password: true, // Force password change on first login
-    })
+    } as any)
 
     // Assign hotels if provided
     if (hotelIds && hotelIds.length > 0) {
