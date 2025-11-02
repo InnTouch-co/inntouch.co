@@ -74,7 +74,12 @@ export interface ServiceProduct {
 export type HotelInsert = Omit<Hotel, 'id' | 'created_at' | 'updated_at'> & {
   active?: boolean  // Make optional in insert since it has a default
 }
-export type UserInsert = Omit<User, 'id' | 'created_at' | 'updated_at' | 'password' | 'remember_token'>
+
+export type UserInsert = 
+  Omit<User, 'id' | 'created_at' | 'updated_at' | 'password' | 'remember_token' | 'is_deleted' | 'active'> & {
+    is_deleted?: boolean  // Make optional since it has a default value in database
+    active?: number  // Make optional since it has a default value
+  }
 export type ProductInsert = Omit<Product, 'id' | 'created_at' | 'updated_at'>
 export type ServiceInsert = Omit<Service, 'id' | 'created_at' | 'updated_at'>
 
