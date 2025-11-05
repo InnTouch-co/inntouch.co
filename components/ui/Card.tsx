@@ -4,11 +4,15 @@ interface CardProps {
   children: React.ReactNode
   className?: string
   title?: string
+  onClick?: () => void
 }
 
-export function Card({ children, className = '', title }: CardProps) {
+export function Card({ children, className = '', title, onClick }: CardProps) {
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 p-6 overflow-hidden ${className}`}>
+    <div 
+      className={`bg-white rounded-lg border border-gray-200 overflow-hidden ${className}`}
+      onClick={onClick}
+    >
       {title && (
         <h2 className="text-lg font-semibold mb-4 text-gray-900">{title}</h2>
       )}

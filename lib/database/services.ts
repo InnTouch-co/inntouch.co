@@ -4,7 +4,7 @@ import type { Service, ServiceInsert } from '@/types/database'
 export async function getServices(hotelId?: string) {
   let query = supabase
     .from('services')
-    .select('*')
+    .select('id, hotel_id, sub_id, title, sort, initiator_id, active, is_deleted, created_at, updated_at')
     .eq('is_deleted', false)
     .order('sort', { ascending: true })
 
@@ -21,7 +21,7 @@ export async function getServices(hotelId?: string) {
 export async function getServiceById(id: string) {
   const { data, error } = await supabase
     .from('services')
-    .select('*')
+    .select('id, hotel_id, sub_id, title, sort, initiator_id, active, is_deleted, created_at, updated_at')
     .eq('id', id)
     .single()
 

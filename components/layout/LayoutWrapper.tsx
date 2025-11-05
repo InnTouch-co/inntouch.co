@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar } from './Sidebar'
+import { Header } from './Header'
+import { SidebarProvider } from './SidebarContext'
 import { PasswordChangeModal } from '@/components/auth/PasswordChangeModal'
 import { getCurrentUserClient, signOut } from '@/lib/auth/auth-client'
 import { supabase } from '@/lib/supabase/client'
@@ -12,15 +14,32 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [checkingPassword, setCheckingPassword] = useState(true)
+  const [user, setUser] = useState<any>(null)
+  const [loadingUser, setLoadingUser] = useState(true)
   const isLoginPage = pathname === '/login'
+  const isSuperAdmin = user?.role_id === 'super_admin'
 
   useEffect(() => {
     if (!isLoginPage) {
+      loadUser()
       checkPasswordChangeRequired()
     } else {
       setCheckingPassword(false)
+      setLoadingUser(false)
     }
   }, [isLoginPage])
+
+  const loadUser = async () => {
+    try {
+      const currentUser = await getCurrentUserClient()
+      setUser(currentUser)
+    } catch (error) {
+      console.error('Failed to load user:', error)
+    } finally {
+      setLoadingUser(false)
+    }
+  }
+
 
   // Check session timeout - logout after 1 hour from login
   useEffect(() => {
@@ -82,8 +101,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   const checkPasswordChangeRequired = async () => {
     try {
-      const user = await getCurrentUserClient()
-      if (user?.must_change_password === true) {
+      const currentUser = await getCurrentUserClient()
+      if (currentUser?.must_change_password === true) {
         setShowPasswordModal(true)
       }
     } catch (error) {
@@ -104,10 +123,13 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <>
+    <SidebarProvider>
       <Sidebar />
-      <main className="ml-64 p-6 min-h-screen">
-        {children}
+      {!isSuperAdmin && <Header />}
+      <main className={`${isSuperAdmin ? 'pt-14 md:pt-0 md:ml-64' : 'pt-[104px] md:pt-0 md:ml-64'} min-h-screen transition-all duration-300 pb-8`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+          {children}
+        </div>
       </main>
       {!checkingPassword && (
         <PasswordChangeModal
@@ -115,7 +137,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           onSuccess={handlePasswordChangeSuccess}
         />
       )}
-    </>
+    </SidebarProvider>
   )
 }
 

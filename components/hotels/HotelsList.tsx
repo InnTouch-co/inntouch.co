@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getHotels, deleteHotel } from '@/lib/database/hotels'
 import { extractTextFromJson } from '@/lib/utils/json-text'
+import { supabase } from '@/lib/supabase/client'
 import type { Hotel } from '@/types/database'
 
 type HotelWithCounts = Hotel & { user_count?: number; room_count?: number }
@@ -14,6 +15,8 @@ export function HotelsList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [totalStaff, setTotalStaff] = useState(0)
+  const [totalServiceRequests, setTotalServiceRequests] = useState(0)
 
   const loadHotels = async () => {
     try {
@@ -21,6 +24,42 @@ export function HotelsList() {
       const data = await getHotels()
       setHotels(data)
       setError('')
+      
+      // Load additional stats
+      const hotelIds = data.map((h: any) => h.id)
+      
+      // Get total staff count
+      let staffCount = 0
+      try {
+        const { count } = await supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true })
+          .in('role_id', ['staff', 'front_desk', 'housekeeping', 'maintenance'])
+          .eq('is_deleted', false)
+          .eq('active', 1)
+        staffCount = count || 0
+      } catch (err) {
+        console.error('Failed to load staff count:', err)
+      }
+      
+      setTotalStaff(staffCount)
+      
+      // Get total service requests
+      let serviceRequestsCount = 0
+      if (hotelIds.length > 0) {
+        try {
+          const { count } = await supabase
+            .from('service_requests')
+            .select('*', { count: 'exact', head: true })
+            .in('hotel_id', hotelIds)
+            .eq('is_deleted', false)
+          serviceRequestsCount = count || 0
+        } catch (err) {
+          console.error('Failed to load service requests count:', err)
+        }
+      }
+      
+      setTotalServiceRequests(serviceRequestsCount)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load hotels')
     } finally {
@@ -54,16 +93,6 @@ export function HotelsList() {
   // Calculate statistics
   const totalProperties = hotels.length
   const totalRooms = hotels.reduce((sum, hotel) => sum + (hotel.room_count || 0), 0)
-  const activeProperties = hotels.filter(hotel => hotel.active).length
-  const organizations = new Set(hotels.map(hotel => {
-    // Derive organization from site (e.g., "grand-hotel-downtown" -> "Grand Hotels International")
-    // For now, using a simple placeholder - you can customize this logic
-    const siteParts = hotel.site?.split('-') || []
-    if (siteParts.length >= 2) {
-      return siteParts.slice(0, -1).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') + ' International'
-    }
-    return extractTextFromJson(hotel.title) + ' Group'
-  })).size
 
   // Filter hotels based on search query
   const filteredHotels = hotels.filter(hotel => {
@@ -91,8 +120,8 @@ export function HotelsList() {
     <div>
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Properties</h2>
-          <p className="text-sm text-gray-500">Manage all hotel properties across organizations.</p>
+          <h2 className="text-xl md:text-3xl font-bold text-gray-900 mb-2">Properties</h2>
+          <p className="text-xs md:text-sm text-gray-500">Manage all hotel properties across organizations.</p>
         </div>
         <button 
           onClick={handleAdd}
@@ -106,58 +135,58 @@ export function HotelsList() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 mb-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-3 md:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Total Properties</p>
-              <p className="text-2xl font-bold text-gray-900">{totalProperties}</p>
+              <p className="text-[10px] md:text-sm text-gray-500 mb-0.5 md:mb-1">Total Properties</p>
+              <p className="text-lg md:text-2xl font-bold text-gray-900">{totalProperties}</p>
             </div>
-            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-8 h-8 md:w-12 md:h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 md:w-6 md:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-3 md:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Total Rooms</p>
-              <p className="text-2xl font-bold text-gray-900">{totalRooms}</p>
+              <p className="text-[10px] md:text-sm text-gray-500 mb-0.5 md:mb-1">Total Rooms</p>
+              <p className="text-lg md:text-2xl font-bold text-gray-900">{totalRooms}</p>
             </div>
-            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-8 h-8 md:w-12 md:h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 md:w-6 md:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-3 md:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Active</p>
-              <p className="text-2xl font-bold text-gray-900">{activeProperties}</p>
+              <p className="text-[10px] md:text-sm text-gray-500 mb-0.5 md:mb-1">Total Staff</p>
+              <p className="text-lg md:text-2xl font-bold text-gray-900">{totalStaff}</p>
             </div>
-            <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <div className="w-8 h-8 md:w-12 md:h-12 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 md:w-6 md:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-3 md:p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500 mb-1">Organizations</p>
-              <p className="text-2xl font-bold text-gray-900">{organizations}</p>
+              <p className="text-[10px] md:text-sm text-gray-500 mb-0.5 md:mb-1">Service Requests</p>
+              <p className="text-lg md:text-2xl font-bold text-gray-900">{totalServiceRequests}</p>
             </div>
-            <div className="w-12 h-12 bg-purple-50 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            <div className="w-8 h-8 md:w-12 md:h-12 bg-purple-50 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 md:w-6 md:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
               </svg>
             </div>
           </div>
@@ -217,12 +246,12 @@ export function HotelsList() {
                 {/* Hotel Info */}
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-base font-bold text-gray-900">
+                    <h3 className="text-sm md:text-base font-bold text-gray-900">
                       {extractTextFromJson(hotel.title)}
                     </h3>
                   </div>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm text-gray-600">{getOrganizationName(hotel)}</span>
+                    <span className="text-xs md:text-sm text-gray-600">{getOrganizationName(hotel)}</span>
                     {hotel.active ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         active
@@ -233,7 +262,7 @@ export function HotelsList() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                  <div className="flex items-center gap-4 text-xs md:text-sm text-gray-500">
                     {hotel.address && (
                       <div className="flex items-center gap-1">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

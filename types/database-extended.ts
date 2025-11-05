@@ -18,6 +18,7 @@ export interface Room {
   status: string
   amenities?: Json | null
   price_per_night?: number | null
+  bed_type?: string | null
   images?: string[] | null
   is_deleted: boolean
   created_at: string

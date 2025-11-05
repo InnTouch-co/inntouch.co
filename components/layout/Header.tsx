@@ -1,15 +1,35 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { getCurrentUserClient, signOut } from '@/lib/auth/auth-client'
-import { extractTextFromJson } from '@/lib/utils/json-text'
-import { getRoleDisplayName } from '@/lib/auth/roles'
+import { usePathname } from 'next/navigation'
+import Link from 'next/link'
+import { getCurrentUserClient } from '@/lib/auth/auth-client'
+
+// Super User navigation items
+const superAdminNavItems = [
+  { href: '/', label: 'Dashboard', icon: '🏠' },
+  { href: '/hotels', label: 'Hotels', icon: '🏢' },
+  { href: '/users', label: 'Users', icon: '👥' },
+]
+
+// Hotel Admin navigation items
+const hotelAdminNavItems = [
+  { href: '/admin/hotel', label: 'Dashboard', icon: '🏠' },
+  { href: '/service-requests', label: 'Service Requests', icon: '📋' },
+  { href: '/rooms', label: 'Rooms', icon: '🛏️' },
+  { href: '/bookings', label: 'Bookings', icon: '📅' },
+  { href: '/staff', label: 'Staff', icon: '👥' },
+  { href: '/users', label: 'Users', icon: '👤' },
+  { href: '/services', label: 'Services', icon: '⚙️' },
+]
 
 export function Header() {
-  const router = useRouter()
+  const pathname = usePathname()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  
+  const isSuperAdmin = user?.role_id === 'super_admin'
+  const navItems = isSuperAdmin ? superAdminNavItems : hotelAdminNavItems
 
   useEffect(() => {
     loadUser()
@@ -26,60 +46,60 @@ export function Header() {
     }
   }
 
-  const handleLogout = async () => {
-    try {
-      await signOut()
-      router.push('/login')
-      router.refresh()
-    } catch (error) {
-      console.error('Logout error:', error)
-    }
-  }
-
   if (loading) {
     return (
-      <header className="fixed top-0 left-64 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-10">
-        <div className="flex items-center space-x-4">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">IT</span>
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-gray-900">InnTouch</div>
+      <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
+        <div className="flex items-center justify-center px-4 h-14 border-b border-gray-200">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-xs">IT</span>
+            </div>
+            <div className="text-xs font-semibold text-gray-900">InnTouch</div>
           </div>
         </div>
+        <nav className="flex items-center justify-center overflow-x-auto scrollbar-hide h-12">
+          <div className="flex items-center space-x-1 px-3 min-w-max">
+            <div className="px-2 py-1.5 text-[10px] font-medium text-gray-400">Loading...</div>
+          </div>
+        </nav>
       </header>
     )
   }
 
   return (
-    <header className="fixed top-0 left-64 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-10">
-      
-
-      {/* Center: Empty for now */}
-      <div className="flex-1"></div>
-
-      {/* Right: Actions */}
-      <div className="flex items-center space-x-4">
-        {user && (
-          <>
-            <div className="text-right">
-              <div className="text-sm font-medium text-gray-900">
-                {user ? extractTextFromJson(user.name) : 'User'}
-              </div>
-              <div className="text-xs text-gray-500">
-                {user?.role_id ? getRoleDisplayName(user.role_id) : 'User'}
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Sign Out"
-            >
-              Sign Out
-            </button>
-          </>
-        )}
+    <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
+      <div className="flex items-center justify-center px-4 h-14 border-b border-gray-200">
+        {/* Centered Logo */}
+        <div className="flex items-center space-x-2">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-xs">IT</span>
+          </div>
+          <div className="text-xs font-semibold text-gray-900">InnTouch</div>
+        </div>
       </div>
+      
+      {/* Navigation Bar */}
+      <nav className="flex items-center justify-center overflow-x-auto scrollbar-hide h-12">
+        <div className="flex items-center space-x-1 px-3 min-w-max">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/')
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`px-2 py-1.5 text-[10px] font-medium rounded-lg whitespace-nowrap transition-colors flex items-center ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span className="mr-1.5">{item.icon}</span>
+                {item.label}
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
     </header>
   )
 }

@@ -4,7 +4,7 @@ import type { Product, ProductInsert } from '@/types/database'
 export async function getProducts() {
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select('id, sort, title, descr, price, image, ext_data, active, is_deleted, created_at, updated_at')
     .eq('is_deleted', false)
     .order('sort', { ascending: true })
 
@@ -15,7 +15,7 @@ export async function getProducts() {
 export async function getProductById(id: string) {
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select('id, sort, title, descr, price, image, ext_data, active, is_deleted, created_at, updated_at')
     .eq('id', id)
     .single()
 
