@@ -154,17 +154,36 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
   }
 
   // Check if using test email (Resend test domain)
-  const isTestMode = fromEmail.includes('@resend.dev') || fromEmail === 'onboarding@resend.dev'
+  // Only redirect in test mode if explicitly enabled OR if in development
+  const isResendTestDomain = fromEmail.includes('@resend.dev') || fromEmail === 'onboarding@resend.dev'
+  const isProduction = process.env.NODE_ENV === 'production'
+  const forceTestMode = process.env.RESEND_FORCE_TEST_MODE === 'true'
+  
+  // Only redirect emails in test mode if:
+  // 1. Using Resend test domain AND
+  // 2. (Not in production OR force test mode is enabled)
+  const isTestMode = isResendTestDomain && (!isProduction || forceTestMode)
   const verifiedTestEmail = process.env.RESEND_TEST_EMAIL || 'beksultanggd@gmail.com'
   
   // In test mode, redirect all emails to verified address
+  // In production with verified domain, send to actual recipient
   const recipientEmail = isTestMode ? verifiedTestEmail : data.email
   
   if (isTestMode) {
     console.warn(`⚠️ Using test email address: ${fromEmail}`)
     console.warn(`⚠️ Test emails can only be sent to your verified email address (${verifiedTestEmail})`)
     console.warn(`⚠️ Original recipient: ${data.email} → Redirected to: ${recipientEmail}`)
-    console.warn(`⚠️ To send to actual recipients, verify a domain at resend.com/domains and set RESEND_FROM_EMAIL`)
+    if (isProduction) {
+      console.warn(`⚠️ PRODUCTION: Emails are being redirected! To send to actual recipients:`)
+      console.warn(`   1. Verify your domain at resend.com/domains`)
+      console.warn(`   2. Set RESEND_FROM_EMAIL=noreply@yourdomain.com in production`)
+      console.warn(`   3. Or set RESEND_FORCE_TEST_MODE=false to disable test mode`)
+    } else {
+      console.warn(`⚠️ To send to actual recipients, verify a domain at resend.com/domains and set RESEND_FROM_EMAIL`)
+    }
+  } else if (isProduction && isResendTestDomain) {
+    console.warn(`⚠️ PRODUCTION: Using Resend test domain (${fromEmail})`)
+    console.warn(`⚠️ This is not recommended for production. Verify your domain and set RESEND_FROM_EMAIL`)
   }
 
   try {
