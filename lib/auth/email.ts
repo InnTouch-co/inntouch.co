@@ -153,11 +153,18 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
     throw new Error('Email sending not configured. Please set RESEND_API_KEY or configure Supabase Edge Function.')
   }
 
-  // Warn if using test email (but allow it for testing to own email)
-  if (fromEmail.includes('@resend.dev') || fromEmail === 'onboarding@resend.dev') {
+  // Check if using test email (Resend test domain)
+  const isTestMode = fromEmail.includes('@resend.dev') || fromEmail === 'onboarding@resend.dev'
+  const verifiedTestEmail = process.env.RESEND_TEST_EMAIL || 'beksultanggd@gmail.com'
+  
+  // In test mode, redirect all emails to verified address
+  const recipientEmail = isTestMode ? verifiedTestEmail : data.email
+  
+  if (isTestMode) {
     console.warn(`⚠️ Using test email address: ${fromEmail}`)
-    console.warn(`⚠️ Test emails can only be sent to your verified email address (beksultanggd@gmail.com)`)
-    console.warn(`⚠️ To send to other recipients, set RESEND_FROM_EMAIL to your verified domain (e.g., noreply@yourdomain.com)`)
+    console.warn(`⚠️ Test emails can only be sent to your verified email address (${verifiedTestEmail})`)
+    console.warn(`⚠️ Original recipient: ${data.email} → Redirected to: ${recipientEmail}`)
+    console.warn(`⚠️ To send to actual recipients, verify a domain at resend.com/domains and set RESEND_FROM_EMAIL`)
   }
 
   try {
@@ -165,16 +172,39 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
     const { Resend } = await import('resend')
     const resend = new Resend(resendApiKey)
     
-    console.log('📧 Attempting to send email to:', data.email)
+    console.log('📧 Attempting to send email to:', recipientEmail)
     console.log('📧 Using from email:', fromEmail)
     console.log('📧 Subject:', emailContent.subject)
     
+    // If in test mode, update the email content to show the original recipient
+    let finalHtml = emailContent.html
+    let finalText = emailContent.text
+    
+    if (isTestMode && recipientEmail !== data.email) {
+      const originalRecipientNote = `<div style="background: #fff3cd; border: 1px solid #ffc107; padding: 12px; margin-bottom: 20px; border-radius: 4px;">
+        <p style="margin: 0; font-size: 14px; color: #856404;">
+          <strong>⚠️ Test Email:</strong> This email was originally intended for <strong>${data.email}</strong> but was redirected to your verified test address for development purposes.
+        </p>
+      </div>`
+      // Insert the note right after the opening body tag
+      finalHtml = finalHtml.replace(/<body[^>]*>/, (match) => `${match}${originalRecipientNote}`)
+      finalText = `⚠️ TEST EMAIL: Originally intended for ${data.email}\n\n${finalText}`
+    }
+    
+    // Add reply-to for better deliverability
+    const replyTo = process.env.RESEND_REPLY_TO || 'noreply@inntouch.co'
+    
     const result = await resend.emails.send({
       from: fromEmail,
-      to: data.email,
+      to: recipientEmail,
+      replyTo: isTestMode ? undefined : replyTo, // Don't set reply-to in test mode
       subject: emailContent.subject,
-      html: emailContent.html,
-      text: emailContent.text,
+      html: finalHtml,
+      text: finalText,
+      // Add headers to improve deliverability
+      headers: {
+        'X-Entity-Ref-ID': `invitation-${Date.now()}`,
+      },
     })
 
     console.log('📧 Resend API response:', JSON.stringify(result, null, 2))
@@ -206,8 +236,23 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
     if (result.data?.id) {
       console.log('✅ Invitation email sent successfully!')
       console.log('📧 Message ID:', result.data.id)
-      console.log('📧 Recipient:', data.email)
+      console.log('📧 Recipient:', recipientEmail)
+      if (isTestMode && recipientEmail !== data.email) {
+        console.log('📧 Original intended recipient:', data.email)
+      }
       console.log('📧 Check Resend dashboard: https://resend.com/emails')
+      
+      // Provide Gmail troubleshooting tips
+      if (isTestMode && recipientEmail.includes('@gmail.com')) {
+        console.log('\n📬 Gmail Troubleshooting Tips:')
+        console.log('   1. Check SPAM folder (emails from test domains often go there)')
+        console.log('   2. Check Promotions, Updates, or Social tabs (not just Primary)')
+        console.log('   3. Search for: "Welcome to InnTouch" or "onboarding@resend.dev"')
+        console.log('   4. Wait 5-10 minutes (Gmail sometimes delays test emails)')
+        console.log('   5. Add onboarding@resend.dev to your Gmail contacts')
+        console.log('   6. Check Gmail filters: Settings → Filters and Blocked Addresses')
+        console.log('\n💡 For production: Verify your domain in Resend to avoid spam filtering')
+      }
     } else {
       console.warn('⚠️ Email sent but no message ID returned. Check Resend dashboard.')
     }
