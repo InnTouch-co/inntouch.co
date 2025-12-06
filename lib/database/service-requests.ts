@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { logger } from '@/lib/utils/logger'
 
 export interface ServiceRequest {
   id: string
@@ -179,7 +180,7 @@ export async function getServiceRequestStats(hotelId: string) {
 
   if (error) {
     // Fallback to optimized SQL query if function doesn't exist yet
-    console.warn('Database function not available, using SQL aggregation fallback:', error)
+    logger.warn('Database function not available, using SQL aggregation fallback:', error)
     return await getServiceRequestStatsFallback(hotelId)
   }
 

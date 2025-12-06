@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { logger } from '@/lib/utils/logger'
 
 export async function POST(request: NextRequest) {
   try {
-    const { currentPassword, newPassword } = await request.json()
+    const { currentPassword, newPassword, isNewUser } = await request.json()
 
-    if (!currentPassword || !newPassword) {
+    if (!newPassword) {
       return NextResponse.json(
-        { error: 'Current password and new password are required' },
+        { error: 'New password is required' },
+        { status: 400 }
+      )
+    }
+
+    // For new users, current password is optional (they use temporary password)
+    // For existing users, current password is required
+    if (!isNewUser && !currentPassword) {
+      return NextResponse.json(
+        { error: 'Current password is required' },
         { status: 400 }
       )
     }
@@ -41,7 +51,7 @@ export async function POST(request: NextRequest) {
     
     // If no user from auth, this is a critical error - user must be authenticated
     if (authError || !authUser || !userEmail) {
-      console.error('Authentication failed:', {
+      logger.error('Authentication failed:', {
         error: authError,
         hasUser: !!authUser,
         userEmail: userEmail,
@@ -66,16 +76,19 @@ export async function POST(request: NextRequest) {
     )
 
     // Verify current password by attempting to sign in with admin client (doesn't affect user session)
-    const { data: verifyData, error: signInError } = await supabaseAdmin.auth.signInWithPassword({
-      email: userEmail,
-      password: currentPassword,
-    })
+    // Skip verification for new users (they're already authenticated with temporary password)
+    if (!isNewUser) {
+      const { data: verifyData, error: signInError } = await supabaseAdmin.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword,
+      })
 
-    if (signInError || !verifyData) {
-      return NextResponse.json(
-        { error: 'Current password is incorrect' },
-        { status: 401 }
-      )
+      if (signInError || !verifyData) {
+        return NextResponse.json(
+          { error: 'Current password is incorrect' },
+          { status: 401 }
+        )
+      }
     }
 
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
@@ -102,7 +115,7 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (userUpdateError) {
-      console.error('Failed to update must_change_password flag:', userUpdateError)
+      logger.error('Failed to update must_change_password flag:', userUpdateError)
       return NextResponse.json(
         { error: `Password changed, but failed to update user record: ${userUpdateError.message}` },
         { status: 500 }
@@ -110,7 +123,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!updatedUser || updatedUser.length === 0) {
-      console.error('User not found in users table for email:', userEmail)
+      logger.error('User not found in users table for email:', userEmail)
       return NextResponse.json(
         { error: 'Password changed, but user record not found' },
         { status: 500 }
@@ -125,7 +138,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (refreshError) {
-      console.error('Password updated but failed to refresh session:', refreshError)
+      logger.error('Password updated but failed to refresh session:', refreshError)
       // Still return success, but warn that user may need to log in again
       return NextResponse.json({ 
         message: 'Password changed successfully. Please log in again with your new password.',
@@ -139,7 +152,7 @@ export async function POST(request: NextRequest) {
       must_change_password: false
     })
   } catch (error: any) {
-    console.error('Error changing password:', error)
+    logger.error('Error changing password:', error)
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

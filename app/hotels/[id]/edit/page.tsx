@@ -6,6 +6,7 @@ import { HotelFormPage } from '@/components/hotels/HotelFormPage'
 import { getHotelById, updateHotel } from '@/lib/database/hotels'
 import { getHotelUsers, addUserToHotel, removeUserFromHotel } from '@/lib/database/hotel-users'
 import type { Hotel } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,7 +26,7 @@ export default function EditHotelPage() {
       const data = await getHotelById(hotelId)
       setHotel(data)
     } catch (err) {
-      console.error('Failed to load hotel:', err)
+      logger.error('Failed to load hotel:', err)
       router.push('/hotels')
     } finally {
       setLoading(false)

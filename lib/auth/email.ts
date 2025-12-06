@@ -2,6 +2,8 @@
  * Email utilities for sending user invitations
  */
 
+import { logger } from '@/lib/utils/logger'
+
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 export interface InvitationEmailData {
@@ -134,10 +136,10 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
       }
 
       const result = await response.json()
-      console.log('✅ Invitation email sent via Supabase Edge Function to:', data.email)
+      logger.info('✅ Invitation email sent via Supabase Edge Function to:', data.email)
       return
     } catch (error: any) {
-      console.error('Error calling Supabase Edge Function:', error)
+      logger.error('Error calling Supabase Edge Function:', error)
       throw new Error(`Failed to send email via Edge Function: ${error.message}`)
     }
   }
@@ -147,9 +149,9 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
   const fromEmail = process.env.RESEND_FROM_EMAIL || process.env.FROM_EMAIL || 'onboarding@resend.dev'
   
   if (!resendApiKey) {
-    console.warn('⚠️ RESEND_API_KEY not set. Email will not be sent.')
-    console.log('📧 Email would be sent to:', data.email)
-    console.log('📧 Subject:', emailContent.subject)
+    logger.warn('⚠️ RESEND_API_KEY not set. Email will not be sent.')
+    logger.info('📧 Email would be sent to:', data.email)
+    logger.info('📧 Subject:', emailContent.subject)
     throw new Error('Email sending not configured. Please set RESEND_API_KEY or configure Supabase Edge Function.')
   }
 
@@ -170,20 +172,20 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
   const recipientEmail = isTestMode ? verifiedTestEmail : data.email
   
   if (isTestMode) {
-    console.warn(`⚠️ Using test email address: ${fromEmail}`)
-    console.warn(`⚠️ Test emails can only be sent to your verified email address (${verifiedTestEmail})`)
-    console.warn(`⚠️ Original recipient: ${data.email} → Redirected to: ${recipientEmail}`)
+    logger.warn(`⚠️ Using test email address: ${fromEmail}`)
+    logger.warn(`⚠️ Test emails can only be sent to your verified email address (${verifiedTestEmail})`)
+    logger.warn(`⚠️ Original recipient: ${data.email} → Redirected to: ${recipientEmail}`)
     if (isProduction) {
-      console.warn(`⚠️ PRODUCTION: Emails are being redirected! To send to actual recipients:`)
-      console.warn(`   1. Verify your domain at resend.com/domains`)
-      console.warn(`   2. Set RESEND_FROM_EMAIL=noreply@yourdomain.com in production`)
-      console.warn(`   3. Or set RESEND_FORCE_TEST_MODE=false to disable test mode`)
+      logger.warn(`⚠️ PRODUCTION: Emails are being redirected! To send to actual recipients:`)
+      logger.warn(`   1. Verify your domain at resend.com/domains`)
+      logger.warn(`   2. Set RESEND_FROM_EMAIL=noreply@yourdomain.com in production`)
+      logger.warn(`   3. Or set RESEND_FORCE_TEST_MODE=false to disable test mode`)
     } else {
-      console.warn(`⚠️ To send to actual recipients, verify a domain at resend.com/domains and set RESEND_FROM_EMAIL`)
+      logger.warn(`⚠️ To send to actual recipients, verify a domain at resend.com/domains and set RESEND_FROM_EMAIL`)
     }
   } else if (isProduction && isResendTestDomain) {
-    console.warn(`⚠️ PRODUCTION: Using Resend test domain (${fromEmail})`)
-    console.warn(`⚠️ This is not recommended for production. Verify your domain and set RESEND_FROM_EMAIL`)
+    logger.warn(`⚠️ PRODUCTION: Using Resend test domain (${fromEmail})`)
+    logger.warn(`⚠️ This is not recommended for production. Verify your domain and set RESEND_FROM_EMAIL`)
   }
 
   try {
@@ -191,9 +193,9 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
     const { Resend } = await import('resend')
     const resend = new Resend(resendApiKey)
     
-    console.log('📧 Attempting to send email to:', recipientEmail)
-    console.log('📧 Using from email:', fromEmail)
-    console.log('📧 Subject:', emailContent.subject)
+    logger.info('📧 Attempting to send email to:', recipientEmail)
+    logger.info('📧 Using from email:', fromEmail)
+    logger.info('📧 Subject:', emailContent.subject)
     
     // If in test mode, update the email content to show the original recipient
     let finalHtml = emailContent.html
@@ -226,10 +228,10 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
       },
     })
 
-    console.log('📧 Resend API response:', JSON.stringify(result, null, 2))
+    logger.debug('📧 Resend API response:', JSON.stringify(result, null, 2))
 
     if (result.error) {
-      console.error('❌ Failed to send email:', result.error)
+      logger.error('❌ Failed to send email:', result.error)
       
       // Provide helpful error message for domain verification issues
       const errorMessage = result.error.message || 'Unknown error'
@@ -245,7 +247,7 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
           `   - noreply@yourdomain.com\n` +
           `   - hello@yourdomain.com\n` +
           `   - notifications@yourdomain.com`
-        console.error('❌', helpfulError)
+        logger.error('❌', helpfulError)
         throw new Error(helpfulError)
       }
       
@@ -253,32 +255,32 @@ export async function sendInvitationEmail(data: InvitationEmailData): Promise<vo
     }
 
     if (result.data?.id) {
-      console.log('✅ Invitation email sent successfully!')
-      console.log('📧 Message ID:', result.data.id)
-      console.log('📧 Recipient:', recipientEmail)
+      logger.info('✅ Invitation email sent successfully!')
+      logger.info('📧 Message ID:', result.data.id)
+      logger.info('📧 Recipient:', recipientEmail)
       if (isTestMode && recipientEmail !== data.email) {
-        console.log('📧 Original intended recipient:', data.email)
+        logger.info('📧 Original intended recipient:', data.email)
       }
-      console.log('📧 Check Resend dashboard: https://resend.com/emails')
+      logger.info('📧 Check Resend dashboard: https://resend.com/emails')
       
       // Provide Gmail troubleshooting tips
       if (isTestMode && recipientEmail.includes('@gmail.com')) {
-        console.log('\n📬 Gmail Troubleshooting Tips:')
-        console.log('   1. Check SPAM folder (emails from test domains often go there)')
-        console.log('   2. Check Promotions, Updates, or Social tabs (not just Primary)')
-        console.log('   3. Search for: "Welcome to InnTouch" or "onboarding@resend.dev"')
-        console.log('   4. Wait 5-10 minutes (Gmail sometimes delays test emails)')
-        console.log('   5. Add onboarding@resend.dev to your Gmail contacts')
-        console.log('   6. Check Gmail filters: Settings → Filters and Blocked Addresses')
-        console.log('\n💡 For production: Verify your domain in Resend to avoid spam filtering')
+        logger.info('\n📬 Gmail Troubleshooting Tips:')
+        logger.info('   1. Check SPAM folder (emails from test domains often go there)')
+        logger.info('   2. Check Promotions, Updates, or Social tabs (not just Primary)')
+        logger.info('   3. Search for: "Welcome to InnTouch" or "onboarding@resend.dev"')
+        logger.info('   4. Wait 5-10 minutes (Gmail sometimes delays test emails)')
+        logger.info('   5. Add onboarding@resend.dev to your Gmail contacts')
+        logger.info('   6. Check Gmail filters: Settings → Filters and Blocked Addresses')
+        logger.info('\n💡 For production: Verify your domain in Resend to avoid spam filtering')
       }
     } else {
-      console.warn('⚠️ Email sent but no message ID returned. Check Resend dashboard.')
+      logger.warn('⚠️ Email sent but no message ID returned. Check Resend dashboard.')
     }
     
     return
   } catch (error: any) {
-    console.error('Error sending email:', error)
+    logger.error('Error sending email:', error)
     
     // If Resend is not installed, provide helpful error
     if (error.message?.includes('Cannot find module') || error.code === 'MODULE_NOT_FOUND') {

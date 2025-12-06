@@ -8,33 +8,61 @@ import { extractTextFromJson } from '@/lib/utils/json-text'
 import { getRoleDisplayName } from '@/lib/auth/roles'
 import { supabase } from '@/lib/supabase/client'
 import { getHotels } from '@/lib/database/hotels'
+import { DashboardIcon, HotelsIcon, UsersIcon, ServiceRequestsIcon, RoomsIcon, ServicesIcon, StaffIcon, GuestSiteIcon, FolioIcon, DataRequestsIcon, CookieConsentsIcon } from '@/components/ui/Icons'
+import { Tag } from 'lucide-react'
+import { HotelSelector, useSelectedHotel } from './HotelSelector'
+import { logger } from '@/lib/utils/logger'
 
 // Super User navigation items
 const superAdminNavItems = [
-  { href: '/', label: 'Dashboard', icon: '🏠' },
-  { href: '/hotels', label: 'Hotels', icon: '🏢' },
-  { href: '/users', label: 'Users', icon: '👥' },
+  { href: '/', label: 'Dashboard', icon: DashboardIcon },
+  { href: '/hotels', label: 'Hotels', icon: HotelsIcon },
+  { href: '/users', label: 'Users', icon: UsersIcon },
+  { href: '/admin/folios', label: 'Folio Management', icon: FolioIcon },
+  { href: '/admin/data-requests', label: 'Data Requests', icon: DataRequestsIcon },
+  { href: '/admin/cookie-consents', label: 'Cookie Consents', icon: CookieConsentsIcon },
 ]
 
 // Hotel Admin navigation items
 const hotelAdminNavItems = [
-  { href: '/admin/hotel', label: 'Dashboard', icon: '🏠' },
-  { href: '/service-requests', label: 'Service Requests', icon: '📋' },
-  { href: '/rooms', label: 'Rooms', icon: '🛏️' },
-  { href: '/bookings', label: 'Bookings', icon: '📅' },
-  { href: '/staff', label: 'Staff', icon: '👥' },
+  { href: '/admin/hotel', label: 'Dashboard', icon: DashboardIcon },
+  { href: '/service-requests', label: 'Service Requests', icon: ServiceRequestsIcon },
+  { href: '/rooms', label: 'Rooms', icon: RoomsIcon },
+  { href: '/folio', label: 'Folios', icon: FolioIcon },
+  { href: '/services', label: 'Services', icon: ServicesIcon },
+  { href: '/staff', label: 'Staff', icon: StaffIcon },
+  { href: '/guest-settings', label: 'Guest Site', icon: GuestSiteIcon },
+  { href: '/admin/promotions', label: 'Promotions', icon: Tag },
+]
+
+// Front Desk navigation items
+const frontDeskNavItems = [
+  { href: '/front-desk', label: 'Dashboard', icon: DashboardIcon },
+  { href: '/rooms', label: 'Rooms', icon: RoomsIcon },
+  { href: '/service-requests', label: 'Service Requests', icon: ServiceRequestsIcon },
+  { href: '/folio', label: 'Folios', icon: FolioIcon },
 ]
 
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const selectedHotelId = useSelectedHotel()
   const [user, setUser] = useState<any>(null)
   const [userHotel, setUserHotel] = useState<any>(null)
+  const [selectedHotel, setSelectedHotel] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadUser()
   }, [])
+
+  useEffect(() => {
+    if (selectedHotelId) {
+      loadSelectedHotel()
+    } else {
+      setSelectedHotel(null)
+    }
+  }, [selectedHotelId])
 
   const loadUser = async () => {
     try {
@@ -46,7 +74,7 @@ export function Sidebar() {
         await loadUserHotel(currentUser.id)
       }
     } catch (error) {
-      console.error('Failed to load user:', error)
+      logger.error('Failed to load user:', error)
     } finally {
       setLoading(false)
     }
@@ -71,15 +99,32 @@ export function Sidebar() {
         }
       }
     } catch (error) {
-      console.error('Failed to load user hotel:', error)
+      logger.error('Failed to load user hotel:', error)
+    }
+  }
+
+  const loadSelectedHotel = async () => {
+    try {
+      const hotels = await getHotels()
+      const hotel = hotels.find(h => h.id === selectedHotelId)
+      if (hotel) {
+        setSelectedHotel(hotel)
+      }
+    } catch (error) {
+      logger.error('Failed to load selected hotel:', error)
     }
   }
 
   // Determine which nav items to show based on user role
   const isSuperAdmin = user?.role_id === 'super_admin'
   const isHotelAdmin = user?.role_id === 'hotel_admin'
+  const isFrontDesk = user?.role_id === 'front_desk'
   const isStaff = user?.role_id && ['staff', 'front_desk', 'housekeeping', 'maintenance'].includes(user.role_id)
-  const navItems = isSuperAdmin ? superAdminNavItems : hotelAdminNavItems
+  const navItems = isSuperAdmin 
+    ? superAdminNavItems 
+    : isFrontDesk 
+    ? frontDeskNavItems 
+    : hotelAdminNavItems
 
   // Get user initials for avatar
   const getUserInitials = () => {
@@ -104,7 +149,7 @@ export function Sidebar() {
       router.push('/login')
       router.refresh()
     } catch (error) {
-      console.error('Logout error:', error)
+      logger.error('Logout error:', error)
     }
   }
 
@@ -114,16 +159,19 @@ export function Sidebar() {
         {/* Mobile: Horizontal Navbar (only for super_admin) */}
         <nav className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-gray-200 z-50 flex items-center justify-center overflow-x-auto shadow-sm scrollbar-hide">
           <div className="flex items-center space-x-1 px-3 min-w-max">
-            {superAdminNavItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="px-2 md:px-3 py-1.5 md:py-2 text-[10px] md:text-xs font-medium rounded-lg whitespace-nowrap flex items-center text-gray-700"
-              >
-                <span className="mr-1.5">{item.icon}</span>
-                {item.label}
-              </Link>
-            ))}
+            {superAdminNavItems.map((item) => {
+              const IconComponent = item.icon
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="px-2 md:px-3 py-1.5 md:py-2 text-[10px] md:text-xs font-medium rounded-lg whitespace-nowrap flex items-center text-gray-700"
+                >
+                  <span className="mr-1.5"><IconComponent className="w-4 h-4" /></span>
+                  {item.label}
+                </Link>
+              )
+            })}
           </div>
         </nav>
         {/* Desktop: Sidebar */}
@@ -161,7 +209,7 @@ export function Sidebar() {
                       : 'text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  <span className="mr-1.5">{item.icon}</span>
+                  <span className="mr-1.5"><item.icon className="w-4 h-4" /></span>
                   {item.label}
                 </Link>
               )
@@ -174,20 +222,36 @@ export function Sidebar() {
       <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 flex-col z-50">
         {/* Logo Section */}
         <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">IT</span>
-            </div>
-            <div>
-              <div className="text-base md:text-lg font-bold text-gray-900">InnTouch</div>
-              <div className="text-[10px] md:text-xs text-gray-500">
-                {user?.role_id ? getRoleDisplayName(user.role_id).toUpperCase() : 'USER'}
-              </div>
-            </div>
+          <div className="flex items-center justify-center h-full">
+            {(() => {
+              const guestSettings = selectedHotel?.guest_settings && typeof selectedHotel.guest_settings === 'object' && !Array.isArray(selectedHotel.guest_settings)
+                ? selectedHotel.guest_settings as any
+                : null
+              const adminLogo = guestSettings?.admin_logo
+              
+              // Show admin logo if available
+              if (adminLogo) {
+                return (
+                  <img
+                    src={adminLogo}
+                    alt="Admin Panel Logo"
+                    className="h-full w-auto object-contain"
+                  />
+                )
+              }
+              
+              // Default fallback
+              return (
+                <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-xl">IT</span>
+                </div>
+              )
+            })()}
           </div>
         </div>
 
         {/* Navigation Items */}
+        <HotelSelector />
         <nav className="flex-1 overflow-y-auto py-4">
           <div className="px-3 space-y-1">
             {navItems.map((item) => {
@@ -202,7 +266,7 @@ export function Sidebar() {
                       : 'text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  <span className="mr-3 text-base">{item.icon}</span>
+                  <span className="mr-3"><item.icon className="w-5 h-5" /></span>
                   {item.label}
                 </Link>
               )

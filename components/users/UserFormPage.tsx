@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/Input'
 import { extractTextFromJson, textToJson } from '@/lib/utils/json-text'
 import { formatPhoneNumber } from '@/lib/utils/phone-mask'
+import { formatEmail } from '@/lib/utils/email-validation'
 import { getHotels } from '@/lib/database/hotels'
 import { SearchableHotelSelector } from './SearchableHotelSelector'
 import { supabase } from '@/lib/supabase/client'
 import type { User, UserInsert } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 interface UserFormPageProps {
   user?: User
@@ -46,7 +48,7 @@ export function UserFormPage({ user, onSubmit, onCancel }: UserFormPageProps) {
       const data = await getHotels()
       setHotels(data)
     } catch (err) {
-      console.error('Failed to load hotels:', err)
+      logger.error('Failed to load hotels:', err)
     } finally {
       setLoadingHotels(false)
     }
@@ -67,7 +69,7 @@ export function UserFormPage({ user, onSubmit, onCancel }: UserFormPageProps) {
         setAssignedHotels(assignedIds)
       }
     } catch (err) {
-      console.error('Failed to load user hotels:', err)
+      logger.error('Failed to load user hotels:', err)
     }
   }
 
@@ -202,7 +204,7 @@ export function UserFormPage({ user, onSubmit, onCancel }: UserFormPageProps) {
               label="Email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail(formatEmail(e.target.value))}
               placeholder="john.doe@example.com"
             />
 

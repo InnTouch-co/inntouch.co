@@ -5,8 +5,10 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { getHotels } from '@/lib/database/hotels'
 import { extractTextFromJson, textToJson } from '@/lib/utils/json-text'
+import { formatEmail } from '@/lib/utils/email-validation'
 import { SearchableHotelSelector } from './SearchableHotelSelector'
 import type { User, UserInsert } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 interface UserFormProps {
   user?: User
@@ -40,7 +42,7 @@ export function UserForm({ user, onSubmit, onCancel }: UserFormProps) {
         await loadUserHotels(data)
       }
     } catch (err) {
-      console.error('Failed to load hotels:', err)
+      logger.error('Failed to load hotels:', err)
     } finally {
       setLoadingHotels(false)
     }
@@ -66,7 +68,7 @@ export function UserForm({ user, onSubmit, onCancel }: UserFormProps) {
         setAssignedHotels(assignedIds)
       }
     } catch (err) {
-      console.error('Failed to load user hotels:', err)
+      logger.error('Failed to load user hotels:', err)
     }
   }
 
@@ -113,7 +115,7 @@ export function UserForm({ user, onSubmit, onCancel }: UserFormProps) {
         label="Email"
         type="email"
         value={formData.email}
-        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+        onChange={(e) => setFormData({ ...formData, email: formatEmail(e.target.value) })}
         placeholder="Enter user email"
       />
 

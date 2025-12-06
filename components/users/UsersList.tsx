@@ -7,7 +7,10 @@ import { getHotels } from '@/lib/database/hotels'
 import { supabase } from '@/lib/supabase/client'
 import { extractTextFromJson } from '@/lib/utils/json-text'
 import { getRoleDisplayName } from '@/lib/auth/roles'
+import { getCurrentUserClient } from '@/lib/auth/auth-client'
+import { useSelectedHotel } from '@/components/layout/HotelSelector'
 import type { User } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 type UserWithHotels = User & { 
   hotel_names?: string
@@ -16,19 +19,33 @@ type UserWithHotels = User & {
 
 export function UsersList() {
   const router = useRouter()
+  const selectedHotel = useSelectedHotel()
   const [users, setUsers] = useState<UserWithHotels[]>([])
   const [hotels, setHotels] = useState<any[]>([])
   const [userHotels, setUserHotels] = useState<Record<string, string[]>>({})
+  const [currentUser, setCurrentUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
 
+  useEffect(() => {
+    if (selectedHotel) {
+      loadUsers()
+    }
+  }, [selectedHotel, refreshKey])
+
   const loadUsers = async (forceRefresh = false) => {
+    if (!selectedHotel) return
+    
     try {
       setLoading(true)
       setError('')
+      
+      // Load current user first
+      const currentUserData = await getCurrentUserClient()
+      setCurrentUser(currentUserData)
       
       const [usersData, hotelsData] = await Promise.all([
         getUsers(),
@@ -36,57 +53,74 @@ export function UsersList() {
       ])
       setHotels(hotelsData || [])
       
-      // Load hotel assignments for each user
+      // Load hotel assignments for each user - filter by selected hotel
       const assignments: Record<string, string[]> = {}
       
-      // Get all hotel_users at once
+      // Get hotel_users for the selected hotel
       const { data: allHotelUsers, error: hotelUsersError } = await supabase
         .from('hotel_users')
         .select('hotel_id, user_id')
+        .eq('hotel_id', selectedHotel)
         .eq('is_deleted', false)
       
       if (!hotelUsersError && allHotelUsers) {
-        for (const user of usersData) {
-          const userHotelIds = allHotelUsers
-            .filter((hu: any) => hu.user_id === user.id)
-            .map((hu: any) => hu.hotel_id)
-          assignments[user.id] = userHotelIds
+        // Get unique user IDs assigned to this hotel
+        const userIds = [...new Set(allHotelUsers.map((hu: any) => hu.user_id))]
+        
+        // Get all users assigned to this hotel
+        const { data: hotelUsers, error: usersError } = await supabase
+          .from('users')
+          .select('*')
+          .in('id', userIds)
+          .eq('is_deleted', false)
+        
+        if (!usersError && hotelUsers) {
+          // Build assignments map
+          for (const user of hotelUsers) {
+            const userHotelIds = allHotelUsers
+              .filter((hu: any) => hu.user_id === user.id)
+              .map((hu: any) => hu.hotel_id)
+            assignments[user.id] = userHotelIds
+          }
+          
+          // Enhance users with hotel/organization info
+          const usersWithHotels = hotelUsers.map(user => {
+            const hotelIds = assignments[user.id] || []
+            const userHotelNames = hotelIds.map(id => {
+              const hotel = hotelsData.find(h => h.id === id)
+              return hotel ? extractTextFromJson(hotel.title) : ''
+            }).filter(Boolean)
+            
+            // Get organization from first hotel
+            const firstHotel = hotelsData.find(h => hotelIds.includes(h.id))
+            let organization = 'No organization'
+            if (firstHotel) {
+              const siteParts = firstHotel.site?.split('-') || []
+              if (siteParts.length >= 2) {
+                organization = siteParts.slice(0, -1).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') + ' International'
+              } else {
+                organization = extractTextFromJson(firstHotel.title) + ' Group'
+              }
+            }
+            
+            return {
+              ...user,
+              hotel_names: userHotelNames.join(', ') || 'No properties',
+              hotel_organization: organization,
+            }
+          })
+          
+          // Filter out current user from the list
+          const filteredUsers = usersWithHotels.filter(u => u.id !== currentUserData?.id)
+          
+          setUsers(filteredUsers)
         }
       }
       
       setUserHotels(assignments)
-      
-      // Enhance users with hotel/organization info
-      const usersWithHotels = usersData.map(user => {
-        const hotelIds = assignments[user.id] || []
-        const userHotelNames = hotelIds.map(id => {
-          const hotel = hotelsData.find(h => h.id === id)
-          return hotel ? extractTextFromJson(hotel.title) : ''
-        }).filter(Boolean)
-        
-        // Get organization from first hotel
-        const firstHotel = hotelsData.find(h => hotelIds.includes(h.id))
-        let organization = 'No organization'
-        if (firstHotel) {
-          const siteParts = firstHotel.site?.split('-') || []
-          if (siteParts.length >= 2) {
-            organization = siteParts.slice(0, -1).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') + ' International'
-          } else {
-            organization = extractTextFromJson(firstHotel.title) + ' Group'
-          }
-        }
-        
-        return {
-          ...user,
-          hotel_names: userHotelNames.join(', ') || 'No properties',
-          hotel_organization: organization,
-        }
-      })
-      
-      setUsers(usersWithHotels)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load users')
-      console.error('Error loading users:', err)
+      logger.error('Error loading users:', err)
     } finally {
       setLoading(false)
     }
@@ -130,7 +164,7 @@ export function UsersList() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete user'
       setError(errorMessage)
-      console.error('Error deleting user:', err)
+      logger.error('Error deleting user:', err)
     } finally {
       setDeletingUserId(null)
     }

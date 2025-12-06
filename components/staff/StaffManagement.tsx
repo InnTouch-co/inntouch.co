@@ -10,7 +10,9 @@ import { supabase } from '@/lib/supabase/client'
 import { extractTextFromJson } from '@/lib/utils/json-text'
 import { getRoleDisplayName } from '@/lib/auth/roles'
 import { getCurrentUserClient } from '@/lib/auth/auth-client'
+import { useSelectedHotel } from '@/components/layout/HotelSelector'
 import type { User } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 type StaffUser = User & {
   hotel_name?: string
@@ -28,7 +30,7 @@ export function StaffManagement() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [hotels, setHotels] = useState<any[]>([])
-  const [selectedHotel, setSelectedHotel] = useState<string>('')
+  const selectedHotel = useSelectedHotel()
   const [staff, setStaff] = useState<StaffUser[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -47,7 +49,7 @@ export function StaffManagement() {
     if (selectedHotel) {
       loadStaff()
     }
-  }, [selectedHotel])
+  }, [selectedHotel, user, hotels])
 
   const loadUserAndHotels = async () => {
     try {
@@ -60,22 +62,10 @@ export function StaffManagement() {
       setUser(currentUser)
 
       // Get hotels assigned to this user
-      const { data: hotelAssignments, error } = await supabase
-        .from('hotel_users')
-        .select('hotel_id, hotels(*)')
-        .eq('user_id', currentUser.id)
-        .eq('is_deleted', false)
-
-      if (error) throw error
-
-      const userHotels = (hotelAssignments || []).map((assignment: any) => assignment.hotels).filter(Boolean)
+      const userHotels = await getHotels()
       setHotels(userHotels)
-
-      if (userHotels.length > 0 && !selectedHotel) {
-        setSelectedHotel(userHotels[0].id)
-      }
     } catch (error) {
-      console.error('Failed to load user/hotels:', error)
+      logger.error('Failed to load user/hotels:', error)
     } finally {
       setLoading(false)
     }
@@ -92,21 +82,23 @@ export function StaffManagement() {
       const hotel = hotels.find(h => h.id === selectedHotel)
       const hotelName = hotel ? extractTextFromJson(hotel.title) : ''
 
-      // Map to StaffUser with enhanced data
-      const hotelStaff = staffUsers.map(s => {
-        // Default values (would come from actual data in real implementation)
-        const staffData: StaffUser = {
-          ...s,
-          hotel_name: hotelName,
-          department: getDepartmentFromRole(s.role_id),
-          status: 'active', // Would come from actual status field
-          rating: 4.7 + Math.random() * 0.3, // Mock rating, would come from actual data
-          tasks_completed: Math.floor(Math.random() * 300), // Mock tasks, would come from actual data
-          shift: getShiftFromRole(s.role_id),
-        }
-        
-        return staffData
-      })
+      // Map to StaffUser with enhanced data and filter out current user
+      const hotelStaff = staffUsers
+        .filter(s => s.id !== user?.id) // Exclude current user from staff list
+        .map(s => {
+          // Default values (would come from actual data in real implementation)
+          const staffData: StaffUser = {
+            ...s,
+            hotel_name: hotelName,
+            department: getDepartmentFromRole(s.role_id),
+            status: 'active', // Would come from actual status field
+            rating: 4.7 + Math.random() * 0.3, // Mock rating, would come from actual data
+            tasks_completed: Math.floor(Math.random() * 300), // Mock tasks, would come from actual data
+            shift: getShiftFromRole(s.role_id),
+          }
+          
+          return staffData
+        })
 
       setStaff(hotelStaff)
 
@@ -124,9 +116,9 @@ export function StaffManagement() {
         tasksToday,
       })
     } catch (error) {
-      console.error('Failed to load staff:', error)
+      logger.error('Failed to load staff:', error)
     }
-  }, [selectedHotel, hotels])
+  }, [selectedHotel, hotels, user])
 
   const getDepartmentFromRole = (roleId: string | null | undefined): string => {
     if (!roleId) return 'General'
@@ -232,7 +224,7 @@ export function StaffManagement() {
       if (error) throw error
       loadStaff()
     } catch (error) {
-      console.error('Failed to remove staff:', error)
+      logger.error('Failed to remove staff:', error)
       alert('Failed to remove staff member')
     }
   }
@@ -268,23 +260,6 @@ export function StaffManagement() {
           </Button>
         </div>
       </div>
-
-      {/* Hotel Selector */}
-      {hotels.length > 1 && (
-        <div className="mb-6">
-          <select
-            value={selectedHotel}
-            onChange={(e) => setSelectedHotel(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm"
-          >
-            {hotels.map((hotel) => (
-              <option key={hotel.id} value={hotel.id}>
-                {extractTextFromJson(hotel.title)}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       {!selectedHotel ? (
         <Card>

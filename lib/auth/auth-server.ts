@@ -5,6 +5,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { AuthUser } from './types'
+import { logger } from '@/lib/utils/logger'
 
 /**
  * Get the current authenticated user from Supabase Auth and merge with users table
@@ -35,7 +36,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 
     return userData as AuthUser
   } catch (error) {
-    console.error('Error getting current user:', error)
+    logger.error('Error getting current user:', error)
     return null
   }
 }

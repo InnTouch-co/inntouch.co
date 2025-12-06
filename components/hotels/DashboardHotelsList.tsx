@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getHotels } from '@/lib/database/hotels'
 import { extractTextFromJson } from '@/lib/utils/json-text'
 import type { Hotel } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 type HotelWithCounts = Hotel & { user_count?: number; room_count?: number }
 
@@ -23,7 +24,7 @@ export function DashboardHotelsList() {
       // Limit to first 10 hotels
       setHotels(data.slice(0, 10))
     } catch (err) {
-      console.error('Failed to load hotels:', err)
+      logger.error('Failed to load hotels:', err)
     } finally {
       setLoading(false)
     }

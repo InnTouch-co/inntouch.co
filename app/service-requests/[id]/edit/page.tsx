@@ -8,10 +8,13 @@ import { Input } from '@/components/ui/Input'
 import { getCurrentUserClient } from '@/lib/auth/auth-client'
 import { supabase } from '@/lib/supabase/client'
 import { extractTextFromJson } from '@/lib/utils/json-text'
+import { formatPhoneNumber } from '@/lib/utils/phone-mask'
+import { formatEmail } from '@/lib/utils/email-validation'
 import { getRooms } from '@/lib/database/rooms'
 import { getServiceRequestById } from '@/lib/database/service-requests'
 import type { Room } from '@/types/database-extended'
 import type { ServiceRequest } from '@/lib/database/service-requests'
+import { logger } from '@/lib/utils/logger'
 
 const REQUEST_TYPES = [
   { id: 'food', name: 'Room Service' },
@@ -125,7 +128,7 @@ export default function EditServiceRequestPage() {
         setError('You do not have access to edit this service request')
       }
     } catch (err) {
-      console.error('Failed to load service request:', err)
+      logger.error('Failed to load service request:', err)
       setError(err instanceof Error ? err.message : 'Failed to load service request')
     } finally {
       setLoading(false)
@@ -140,7 +143,7 @@ export default function EditServiceRequestPage() {
       const roomsData = await getRooms(request.hotel_id)
       setRooms(roomsData)
     } catch (error) {
-      console.error('Failed to load rooms:', error)
+      logger.error('Failed to load rooms:', error)
     } finally {
       setLoadingRooms(false)
     }
@@ -200,7 +203,7 @@ export default function EditServiceRequestPage() {
 
       router.push('/service-requests')
     } catch (err) {
-      console.error('Failed to update service request:', err)
+      logger.error('Failed to update service request:', err)
       setError(err instanceof Error ? err.message : 'Failed to update service request')
     } finally {
       setIsUpdating(false)
@@ -292,7 +295,7 @@ export default function EditServiceRequestPage() {
                   <option value="">Select a room</option>
                   {rooms.map((room) => (
                     <option key={room.id} value={room.id}>
-                      {room.room_number} {room.room_type ? `- ${extractTextFromJson(room.room_type)}` : ''}
+                      {room.room_number}
                     </option>
                   ))}
                 </select>
@@ -305,7 +308,7 @@ export default function EditServiceRequestPage() {
                 <Input
                   type="email"
                   value={guestEmail}
-                  onChange={(e) => setGuestEmail(e.target.value)}
+                  onChange={(e) => setGuestEmail(formatEmail(e.target.value))}
                   placeholder="guest@example.com"
                   className="text-sm"
                 />
@@ -318,8 +321,8 @@ export default function EditServiceRequestPage() {
                 <Input
                   type="tel"
                   value={guestPhone}
-                  onChange={(e) => setGuestPhone(e.target.value)}
-                  placeholder="+1 (555) 000-0000"
+                  onChange={(e) => setGuestPhone(formatPhoneNumber(e.target.value))}
+                  placeholder="+1 (555) 123-4567"
                   className="text-sm"
                 />
               </div>

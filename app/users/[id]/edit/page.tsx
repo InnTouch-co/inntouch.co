@@ -7,6 +7,7 @@ import { getUserById, updateUser } from '@/lib/database/users'
 import { supabase } from '@/lib/supabase/client'
 import { addUserToHotel, removeUserFromHotel } from '@/lib/database/hotel-users'
 import type { User } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export default function EditUserPage() {
       const data = await getUserById(userId)
       setUser(data)
     } catch (err) {
-      console.error('Failed to load user:', err)
+      logger.error('Failed to load user:', err)
       router.push('/users')
     } finally {
       setLoading(false)

@@ -6,6 +6,7 @@ import { getHotels, deleteHotel } from '@/lib/database/hotels'
 import { extractTextFromJson } from '@/lib/utils/json-text'
 import { supabase } from '@/lib/supabase/client'
 import type { Hotel } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 type HotelWithCounts = Hotel & { user_count?: number; room_count?: number }
 
@@ -39,7 +40,7 @@ export function HotelsList() {
           .eq('active', 1)
         staffCount = count || 0
       } catch (err) {
-        console.error('Failed to load staff count:', err)
+        logger.error('Failed to load staff count:', err)
       }
       
       setTotalStaff(staffCount)
@@ -55,7 +56,7 @@ export function HotelsList() {
             .eq('is_deleted', false)
           serviceRequestsCount = count || 0
         } catch (err) {
-          console.error('Failed to load service requests count:', err)
+          logger.error('Failed to load service requests count:', err)
         }
       }
       

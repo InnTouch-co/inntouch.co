@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { logger } from '@/lib/utils/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
       message: 'User deleted successfully from both database and authentication'
     })
   } catch (error: any) {
-    console.error('Error deleting user:', error)
+    logger.error('Error deleting user:', error)
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

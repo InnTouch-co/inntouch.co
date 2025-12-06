@@ -10,6 +10,7 @@ import { extractTextFromJson } from '@/lib/utils/json-text'
 import { formatPhoneNumber } from '@/lib/utils/phone-mask'
 import { getRoleDisplayName } from '@/lib/auth/roles'
 import type { User } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 export default function ViewStaffMemberPage() {
   const router = useRouter()
@@ -69,7 +70,7 @@ export default function ViewStaffMemberPage() {
       }
       const errorMessage = err instanceof Error ? err.message : 'Failed to load staff member'
       setError(errorMessage)
-      console.error('Error loading staff member:', err)
+      logger.error('Error loading staff member:', err)
     } finally {
       if (!abortController.signal.aborted) {
         setLoading(false)

@@ -2,18 +2,18 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { DashboardIcon, HotelsIcon, UsersIcon, RoomsIcon, InventoryIcon, ContentIcon, NotificationsIcon, ServicesIcon, ProductsIcon } from '@/components/ui/Icons'
 
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: '📊' },
-  { href: '/hotels', label: 'Hotels', icon: '🏨' },
-  { href: '/users', label: 'Users', icon: '👥' },
-  { href: '/rooms', label: 'Rooms', icon: '🛏️' },
-  { href: '/bookings', label: 'Bookings', icon: '📅' },
-  { href: '/inventory', label: 'Inventory', icon: '📦' },
-  { href: '/content', label: 'Content', icon: '📝' },
-  { href: '/notifications', label: 'Notifications', icon: '🔔' },
-  { href: '/services', label: 'Services', icon: '⚙️' },
-  { href: '/products', label: 'Products', icon: '🍽️' },
+  { href: '/', label: 'Dashboard', icon: DashboardIcon },
+  { href: '/hotels', label: 'Hotels', icon: HotelsIcon },
+  { href: '/users', label: 'Users', icon: UsersIcon },
+  { href: '/rooms', label: 'Rooms', icon: RoomsIcon },
+  { href: '/inventory', label: 'Inventory', icon: InventoryIcon },
+  { href: '/content', label: 'Content', icon: ContentIcon },
+  { href: '/notifications', label: 'Notifications', icon: NotificationsIcon },
+  { href: '/services', label: 'Services', icon: ServicesIcon },
+  { href: '/products', label: 'Products', icon: ProductsIcon },
 ]
 
 export function Navigation() {
@@ -40,7 +40,7 @@ export function Navigation() {
                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    <span className="mr-2">{item.icon}</span>
+                    <span className="mr-2"><item.icon className="w-5 h-5" /></span>
                     {item.label}
                   </Link>
                 )

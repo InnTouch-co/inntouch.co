@@ -7,7 +7,6 @@ export type Permission =
   | 'hotel'
   | 'users'
   | 'rooms'
-  | 'bookings'
   | 'inventory'
   | 'content'
   | 'notifications'
@@ -26,13 +25,11 @@ export const ROLE_PERMISSIONS: Record<string, UserPermissions> = {
     hotel: true,
     users: true,
     rooms: true,
-    bookings: true,
     inventory: true,
     content: true,
     notifications: true,
   },
   front_desk: {
-    bookings: true,
     guests: true,
     view: true,
     rooms: true, // View only
@@ -81,7 +78,6 @@ export function canAccessRoute(userRole: string | undefined, route: string): boo
     '/hotels': 'hotel',
     '/users': 'users',
     '/rooms': 'rooms',
-    '/bookings': 'bookings',
     '/inventory': 'inventory',
     '/content': 'content',
     '/notifications': 'notifications',

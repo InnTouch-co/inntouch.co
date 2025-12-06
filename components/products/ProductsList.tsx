@@ -83,7 +83,7 @@ export function ProductsList() {
           <p className="text-sm text-gray-500">Manage menu items and product catalog.</p>
         </div>
         <Button onClick={() => setIsModalOpen(true)} className="bg-gray-900 text-white hover:bg-gray-800">
-          + Add Product
+          Add Product
         </Button>
       </div>
 

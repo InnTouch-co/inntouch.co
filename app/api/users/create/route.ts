@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { generateInvitationEmail } from '@/lib/auth/email'
 import { createUser } from '@/lib/database/users'
 import { textToJson } from '@/lib/utils/json-text'
+import { logger } from '@/lib/utils/logger'
 
 /**
  * Generate a random password
@@ -105,9 +106,9 @@ export async function POST(request: NextRequest) {
     const roleName = roleData?.name || 'Hotel Admin'
 
     // Generate and send invitation email
-    console.log('📧 Starting email sending process...')
-    console.log('📧 Email recipient:', email)
-    console.log('📧 User name:', typeof name === 'string' ? name : (name as any)?.en || 'User')
+    logger.info('📧 Starting email sending process...')
+    logger.info('📧 Email recipient:', email)
+    logger.info('📧 User name:', typeof name === 'string' ? name : (name as any)?.en || 'User')
     
     try {
       const { sendInvitationEmail } = await import('@/lib/auth/email')
@@ -117,12 +118,12 @@ export async function POST(request: NextRequest) {
         password,
         role: roleName,
       })
-      console.log('✅ Email sending completed successfully')
+      logger.info('✅ Email sending completed successfully')
     } catch (emailError: any) {
       // Log email error but don't fail user creation
-      console.error('❌ Failed to send invitation email:')
-      console.error('❌ Error:', emailError.message)
-      console.error('❌ Stack:', emailError.stack)
+      logger.error('❌ Failed to send invitation email:')
+      logger.error('❌ Error:', emailError.message)
+      logger.error('❌ Stack:', emailError.stack)
       
       // Return the password so it can be shared manually if needed
       return NextResponse.json({
@@ -140,7 +141,7 @@ export async function POST(request: NextRequest) {
       message: 'User created successfully. Invitation email has been sent.',
     })
   } catch (error: any) {
-    console.error('Error creating user:', error)
+    logger.error('Error creating user:', error)
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

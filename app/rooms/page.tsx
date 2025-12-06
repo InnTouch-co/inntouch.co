@@ -8,29 +8,42 @@ import { getCurrentUserClient } from '@/lib/auth/auth-client'
 import { supabase } from '@/lib/supabase/client'
 import { getRooms, deleteRoom, calculateRoomStats } from '@/lib/database/rooms'
 import { getHotelById } from '@/lib/database/hotels'
-import { extractTextFromJson } from '@/lib/utils/json-text'
+import { useSelectedHotel } from '@/components/layout/HotelSelector'
+import { QRCodeGenerator } from '@/components/rooms/QRCodeGenerator'
+import { QRCodePrintView } from '@/components/rooms/QRCodePrintView'
+import { Modal } from '@/components/ui/Modal'
 import type { Room } from '@/types/database-extended'
+import { formatPhoneNumber, stripPhoneFormat } from '@/lib/utils/phone-mask'
+import { formatEmail } from '@/lib/utils/email-validation'
+import { detectOrderTypesFromItems, getOrderTypeLabels, getOrderTypeColors } from '@/lib/utils/order-type-detection'
+import { isCheckoutOverdue, getDaysOverdue } from '@/lib/utils/date-utils'
+import { logger } from '@/lib/utils/logger'
+import { useHotelTimezone } from '@/lib/hooks/useHotelTimezone'
+import { formatTimestamp } from '@/lib/utils/formatTimestamp'
 
 export const dynamic = 'force-dynamic'
 
 type RoomStatus = 'available' | 'occupied' | 'cleaning' | 'maintenance'
 
-const AMENITIES_OPTIONS = [
-  { id: 'wifi', label: 'WiFi', icon: '📶' },
-  { id: 'tv', label: 'TV', icon: '📺' },
-  { id: 'ac', label: 'AC', icon: '❄️' },
-  { id: 'coffee', label: 'Coffee Maker', icon: '☕' },
-  { id: 'minibar', label: 'Minibar', icon: '🍷' },
-  { id: 'safe', label: 'Safe', icon: '🔒' },
-  { id: 'balcony', label: 'Balcony', icon: '🌅' },
-  { id: 'bathtub', label: 'Bathtub', icon: '🛁' },
-]
+interface RoomDetails {
+  booking_id: string | null
+  guest_info: {
+    id: string
+    name: string
+    email: string | null
+    phone: string | null
+    check_in_date: string
+    check_out_date: string
+  } | null
+  pending_orders_count: number
+  pending_orders_total: number
+}
 
 export default function RoomsPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
-  const [hotels, setHotels] = useState<any[]>([])
-  const [selectedHotel, setSelectedHotel] = useState<string>('')
+  const selectedHotel = useSelectedHotel()
+  const hotelTimezone = useHotelTimezone(selectedHotel?.id)
   const [currentHotel, setCurrentHotel] = useState<any>(null)
   const [rooms, setRooms] = useState<Room[]>([])
   const [stats, setStats] = useState({
@@ -43,11 +56,78 @@ export default function RoomsPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<RoomStatus | 'all'>('all')
+  const [smartFilter, setSmartFilter] = useState<'none' | 'checked_in_today' | 'checking_out_today' | 'occupied' | 'pending_orders' | 'overdue_checkout'>('none')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(20)
+  const [itemsPerPage] = useState(20)
+  const [showFilters, setShowFilters] = useState(false)
+  const [showQRCode, setShowQRCode] = useState<{ roomNumber: string } | null>(null)
+  const [showAllQRCodes, setShowAllQRCodes] = useState(false)
+  const [roomDetails, setRoomDetails] = useState<Record<string, RoomDetails>>({})
+  const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({})
+  const [showCheckInModal, setShowCheckInModal] = useState<Room | null>(null)
+  const [showCheckOutModal, setShowCheckOutModal] = useState<Room | null>(null)
+  const [showStatusModal, setShowStatusModal] = useState<{ room: Room; newStatus: RoomStatus } | null>(null)
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+  const [editingGuest, setEditingGuest] = useState<{ roomId: string; field: 'name' | 'phone' } | null>(null)
+  const [editingValues, setEditingValues] = useState<{ name: string; phone: string }>({ name: '', phone: '' })
+  const [checkingOut, setCheckingOut] = useState<string | null>(null)
+  const [checkingIn, setCheckingIn] = useState(false)
+  const [checkInFormData, setCheckInFormData] = useState({
+    guest_name: '',
+    guest_email: '',
+    guest_phone: '',
+    check_in_date: '',
+    check_out_date: '',
+    special_requests: '',
+  })
+  
+  // Initialize dates with hotel timezone
+  useEffect(() => {
+    if (selectedHotel?.id) {
+      const initializeDates = async () => {
+        try {
+          const response = await fetch(`/api/hotels/${selectedHotel.id}/timezone`)
+          const data = await response.json()
+          const timezone = data.timezone || 'America/Chicago'
+          
+          // Get current date in hotel timezone
+          const now = new Date()
+          const currentDate = now.toLocaleDateString('en-CA', { timeZone: timezone })
+          
+          // Get tomorrow's date in hotel timezone
+          const tomorrow = new Date(now)
+          tomorrow.setDate(tomorrow.getDate() + 1)
+          const tomorrowDate = tomorrow.toLocaleDateString('en-CA', { timeZone: timezone })
+          
+          setCheckInFormData(prev => ({
+            ...prev,
+            check_in_date: prev.check_in_date || currentDate,
+            check_out_date: prev.check_out_date || tomorrowDate,
+          }))
+        } catch (error) {
+          // Fallback to local timezone
+          const today = new Date().toISOString().split('T')[0]
+          const tomorrow = new Date()
+          tomorrow.setDate(tomorrow.getDate() + 1)
+          const tomorrowStr = tomorrow.toISOString().split('T')[0]
+          
+          setCheckInFormData(prev => ({
+            ...prev,
+            check_in_date: prev.check_in_date || today,
+            check_out_date: prev.check_out_date || tomorrowStr,
+          }))
+        }
+      }
+      
+      initializeDates()
+    }
+  }, [selectedHotel?.id])
+  const [showOrdersModal, setShowOrdersModal] = useState<{ roomId: string; roomNumber: string } | null>(null)
+  const [orders, setOrders] = useState<any[]>([])
+  const [loadingOrders, setLoadingOrders] = useState(false)
 
   useEffect(() => {
-    loadUserAndHotels()
+    loadUser()
   }, [])
 
   useEffect(() => {
@@ -58,6 +138,58 @@ export default function RoomsPage() {
   }, [selectedHotel])
 
   useEffect(() => {
+    // Load room details for all rooms
+    if (rooms.length > 0 && selectedHotel) {
+      loadRoomDetails()
+    }
+  }, [rooms, selectedHotel])
+
+  const loadRoomDetails = async () => {
+    if (rooms.length === 0) return
+
+    // Set loading state for all rooms
+    const loading: Record<string, boolean> = {}
+    rooms.forEach(room => {
+      loading[room.id] = true
+    })
+    setLoadingDetails(loading)
+
+    try {
+      // Use batch API to fetch all room details at once
+      const response = await fetch('/api/rooms/details-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_ids: rooms.map(room => room.id),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to load room details')
+      }
+
+      const data = await response.json()
+      setRoomDetails(data.details || {})
+    } catch (error) {
+      logger.error('Failed to load room details:', error)
+      // Set empty details on error
+      const emptyDetails: Record<string, RoomDetails> = {}
+      rooms.forEach(room => {
+        emptyDetails[room.id] = {
+          booking_id: null,
+          guest_info: null,
+          pending_orders_count: 0,
+          pending_orders_total: 0,
+        }
+      })
+      setRoomDetails(emptyDetails)
+    } finally {
+      // Clear loading state
+      setLoadingDetails({})
+    }
+  }
+
+  useEffect(() => {
     if (selectedHotel) {
       loadRooms()
     }
@@ -66,9 +198,9 @@ export default function RoomsPage() {
   // Reset to page 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, statusFilter])
+  }, [searchQuery, statusFilter, smartFilter])
 
-  const loadUserAndHotels = async () => {
+  const loadUser = async () => {
     try {
       const currentUser = await getCurrentUserClient()
       if (!currentUser) {
@@ -77,24 +209,8 @@ export default function RoomsPage() {
       }
 
       setUser(currentUser)
-
-      // Get hotels assigned to this user
-      const { data: hotelAssignments, error } = await supabase
-        .from('hotel_users')
-        .select('hotel_id, hotels(*)')
-        .eq('user_id', currentUser.id)
-        .eq('is_deleted', false)
-
-      if (error) throw error
-
-      const userHotels = (hotelAssignments || []).map((assignment: any) => assignment.hotels).filter(Boolean)
-      setHotels(userHotels)
-
-      if (userHotels.length > 0 && !selectedHotel) {
-        setSelectedHotel(userHotels[0].id)
-      }
     } catch (error) {
-      console.error('Failed to load user/hotels:', error)
+      logger.error('Failed to load user:', error)
     } finally {
       setLoading(false)
     }
@@ -106,7 +222,7 @@ export default function RoomsPage() {
       const hotel = await getHotelById(selectedHotel)
       setCurrentHotel(hotel)
     } catch (error) {
-      console.error('Failed to load hotel:', error)
+      logger.error('Failed to load hotel:', error)
     }
   }
 
@@ -119,7 +235,7 @@ export default function RoomsPage() {
       const counts = calculateRoomStats(roomsData)
       setStats(counts)
     } catch (error) {
-      console.error('Failed to load rooms:', error)
+      logger.error('Failed to load rooms:', error)
     }
   }
 
@@ -157,17 +273,259 @@ export default function RoomsPage() {
       await deleteRoom(id)
       loadRooms()
     } catch (error) {
-      console.error('Failed to delete room:', error)
+      logger.error('Failed to delete room:', error)
       alert('Failed to delete room')
     }
   }
 
+  const handleQuickCheckIn = (room: Room) => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    setCheckInFormData({
+      guest_name: '',
+      guest_email: '',
+      guest_phone: '',
+      check_in_date: new Date().toISOString().split('T')[0],
+      check_out_date: tomorrow.toISOString().split('T')[0],
+      special_requests: '',
+    })
+    setShowCheckInModal(room)
+  }
+
+  const handleConfirmCheckIn = async (room: Room) => {
+    if (!selectedHotel) return
+
+    if (!checkInFormData.guest_name.trim() || !checkInFormData.check_in_date || !checkInFormData.check_out_date) {
+      alert('Please fill in all required fields (Guest Name, Check-In Date, Check-Out Date)')
+      return
+    }
+
+    setCheckingIn(true)
+    try {
+      const response = await fetch('/api/bookings/check-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hotel_id: selectedHotel,
+          room_number: room.room_number,
+          guest_name: checkInFormData.guest_name.trim(),
+          guest_email: checkInFormData.guest_email.trim() || null,
+          guest_phone: checkInFormData.guest_phone ? stripPhoneFormat(checkInFormData.guest_phone) : null,
+          check_in_date: checkInFormData.check_in_date,
+          check_out_date: checkInFormData.check_out_date,
+          special_requests: checkInFormData.special_requests.trim() || null,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to check in guest')
+      }
+
+      // Success - reload rooms and close modal
+      await loadRooms()
+      setShowCheckInModal(null)
+      alert(`Guest ${checkInFormData.guest_name} checked in successfully!`)
+    } catch (error: any) {
+      logger.error('Failed to check in guest:', error)
+      alert(error.message || 'Failed to check in guest')
+    } finally {
+      setCheckingIn(false)
+    }
+  }
+
+  const handleQuickCheckOut = async (room: Room) => {
+    // Always show confirmation modal
+    setShowCheckOutModal(room)
+  }
+
+  const handleConfirmCheckOut = async (room: Room) => {
+    if (!selectedHotel) return
+    
+    setCheckingOut(room.id)
+    try {
+      const response = await fetch('/api/bookings/check-out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hotel_id: selectedHotel,
+          room_number: room.room_number,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to check out guest')
+      }
+
+      // Success - reload rooms and close modal
+      await loadRooms()
+      setShowCheckOutModal(null)
+      alert(`Guest ${data.booking.guest_name} checked out successfully!${data.pending_orders.count > 0 ? ` Folio generated with ${data.pending_orders.count} pending order(s).` : ''}`)
+    } catch (error: any) {
+      logger.error('Failed to check out guest:', error)
+      alert(error.message || 'Failed to check out guest')
+    } finally {
+      setCheckingOut(null)
+    }
+  }
+
+  const handleStartEditGuest = (roomId: string, field: 'name' | 'phone') => {
+    const details = roomDetails[roomId]
+    if (details?.guest_info) {
+      setEditingGuest({ roomId, field })
+      setEditingValues({
+        name: details.guest_info.name || '',
+        phone: details.guest_info.phone || '',
+      })
+    }
+  }
+
+  const handleSaveGuestInfo = async (roomId: string) => {
+    const details = roomDetails[roomId]
+    if (!details?.booking_id) return
+
+    try {
+      const response = await fetch(`/api/bookings/${details.booking_id}/guest-info`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guest_name: editingValues.name,
+          guest_phone: editingValues.phone || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to update guest info')
+      }
+
+      // Reload room details
+      await loadRoomDetails()
+      setEditingGuest(null)
+    } catch (error: any) {
+      logger.error('Failed to update guest info:', error)
+      alert(error.message || 'Failed to update guest information')
+    }
+  }
+
+  const handleCancelEditGuest = () => {
+    setEditingGuest(null)
+    setEditingValues({ name: '', phone: '' })
+  }
+
+  const handleShowOrders = async (roomId: string, roomNumber: string) => {
+    setShowOrdersModal({ roomId, roomNumber })
+    setLoadingOrders(true)
+    setOrders([])
+    try {
+      const response = await fetch(`/api/rooms/${roomId}/orders`)
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch orders')
+      }
+      
+      setOrders(data.orders || [])
+    } catch (error: any) {
+      logger.error('Failed to load orders:', error)
+      setOrders([])
+      // Show error to user
+      alert(`Failed to load orders: ${error.message || 'Unknown error'}`)
+    } finally {
+      setLoadingOrders(false)
+    }
+  }
+
+  const handleQuickStatusChange = async (roomId: string, newStatus: RoomStatus) => {
+    setUpdatingStatus(roomId)
+    try {
+      const response = await fetch('/api/rooms/quick-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: roomId, status: newStatus }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to update status')
+      }
+
+      await loadRooms()
+      setShowStatusModal(null)
+    } catch (error: any) {
+      logger.error('Failed to update room status:', error)
+      alert(error.message || 'Failed to update room status')
+    } finally {
+      setUpdatingStatus(null)
+    }
+  }
+
   const filteredRooms = rooms.filter(room => {
-    const matchesSearch = !searchQuery || 
-      room.room_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      extractTextFromJson(room.room_type).toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesRoomNumber = !searchQuery || 
+      room.room_number.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    // Also search by guest name if room is occupied
+    const matchesGuestName = !searchQuery || 
+      (room.status === 'occupied' && roomDetails[room.id]?.guest_info?.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    
+    const matchesSearch = matchesRoomNumber || matchesGuestName
     const matchesStatus = statusFilter === 'all' || room.status === statusFilter
-    return matchesSearch && matchesStatus
+    
+    // Apply smart filters
+    let matchesSmartFilter = true
+    if (smartFilter !== 'none') {
+      const details = roomDetails[room.id]
+      const guestInfo = details?.guest_info
+      
+      switch (smartFilter) {
+        case 'checked_in_today':
+          if (guestInfo) {
+            const checkInDate = new Date(guestInfo.check_in_date)
+            const today = new Date()
+            // Compare year, month, and day only
+            matchesSmartFilter = 
+              checkInDate.getFullYear() === today.getFullYear() &&
+              checkInDate.getMonth() === today.getMonth() &&
+              checkInDate.getDate() === today.getDate()
+          } else {
+            matchesSmartFilter = false
+          }
+          break
+        case 'checking_out_today':
+          if (guestInfo) {
+            const checkOutDate = new Date(guestInfo.check_out_date)
+            const today = new Date()
+            // Compare year, month, and day only
+            matchesSmartFilter = 
+              checkOutDate.getFullYear() === today.getFullYear() &&
+              checkOutDate.getMonth() === today.getMonth() &&
+              checkOutDate.getDate() === today.getDate()
+          } else {
+            matchesSmartFilter = false
+          }
+          break
+        case 'occupied':
+          matchesSmartFilter = room.status === 'occupied'
+          break
+        case 'pending_orders':
+          matchesSmartFilter = (details?.pending_orders_count || 0) > 0
+          break
+        case 'overdue_checkout':
+          if (guestInfo && guestInfo.check_out_date) {
+            matchesSmartFilter = isCheckoutOverdue(guestInfo.check_out_date)
+          } else {
+            matchesSmartFilter = false
+          }
+          break
+        default:
+          matchesSmartFilter = true
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesSmartFilter
   })
 
   // Calculate pagination
@@ -182,10 +540,6 @@ export default function RoomsPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleItemsPerPageChange = (items: number) => {
-    setItemsPerPage(items)
-    setCurrentPage(1)
-  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -227,18 +581,8 @@ export default function RoomsPage() {
     )
   }
 
-  if (hotels.length === 0) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-gray-500 mb-4">No hotels assigned to your account.</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div>
+    <div className="-mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-6 flex justify-between items-start">
         <div>
@@ -246,6 +590,19 @@ export default function RoomsPage() {
           <p className="text-xs md:text-sm text-gray-600">Manage your property's rooms and inventory</p>
         </div>
         <div className="flex gap-2">
+          {rooms.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAllQRCodes(true)}
+              className="text-xs md:text-sm"
+            >
+              <svg className="w-4 h-4 mr-1.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              QR Codes
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -267,30 +624,10 @@ export default function RoomsPage() {
             <svg className="w-4 h-4 mr-1.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            + Add Room
+            Add Room
           </Button>
         </div>
       </div>
-      
-      {/* Hotel Selector */}
-      {hotels.length > 1 && (
-        <div className="mb-6">
-          <label className="block text-xs md:text-sm font-medium text-gray-700 mb-2">
-            Select Hotel
-          </label>
-          <select
-            value={selectedHotel}
-            onChange={(e) => setSelectedHotel(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm"
-          >
-            {hotels.map((hotel) => (
-              <option key={hotel.id} value={hotel.id}>
-                {extractTextFromJson(hotel.title)}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       {!selectedHotel ? (
         <Card>
@@ -384,251 +721,839 @@ export default function RoomsPage() {
             </Card>
           </div>
 
-          {/* Search and Filters */}
-          <div className="bg-white rounded-lg border border-gray-200 p-3 md:p-4 mb-6 flex flex-col md:flex-row items-center gap-3 md:gap-4">
-            <div className="flex-1 relative w-full">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="w-4 h-4 md:w-5 md:h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+          {/* Combined Search and Filters */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <div className="flex flex-col gap-4">
+              {/* Search Bar */}
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Search by room number or guest name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="flex-1 pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowFilters(!showFilters)
+                    }}
+                    className={`px-4 py-2.5 border rounded-lg transition-colors text-sm flex items-center gap-2 ${
+                      statusFilter !== 'all' || smartFilter !== 'none' || searchQuery
+                        ? 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                    Filters
+                    {(statusFilter !== 'all' || smartFilter !== 'none') && (
+                      <span className="ml-1 px-1.5 py-0.5 bg-blue-600 text-white text-xs rounded-full">
+                        {[statusFilter !== 'all' ? 1 : 0, smartFilter !== 'none' ? 1 : 0].reduce((a, b) => a + b, 0)}
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
-              <input
-                type="text"
-                placeholder="Search rooms..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm"
-              />
+
+              {/* Filters Panel */}
+              {showFilters && (
+                <div className="border-t border-gray-200 pt-4 space-y-4">
+                  {/* Status Filter */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Room Status</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(['all', 'available', 'occupied', 'cleaning', 'maintenance'] as const).map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => setStatusFilter(status === 'all' ? 'all' : status)}
+                          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                            statusFilter === status
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Smart Filters */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Quick Filters</label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant={smartFilter === 'checked_in_today' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setSmartFilter(smartFilter === 'checked_in_today' ? 'none' : 'checked_in_today')}
+                        className={`text-xs ${smartFilter === 'checked_in_today' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}`}
+                      >
+                        Today's Check-Ins
+                      </Button>
+                      <Button
+                        variant={smartFilter === 'checking_out_today' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setSmartFilter(smartFilter === 'checking_out_today' ? 'none' : 'checking_out_today')}
+                        className={`text-xs ${smartFilter === 'checking_out_today' ? 'bg-orange-600 text-white hover:bg-orange-700' : ''}`}
+                      >
+                        Today's Check-Outs
+                      </Button>
+                      <Button
+                        variant={smartFilter === 'occupied' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setSmartFilter(smartFilter === 'occupied' ? 'none' : 'occupied')}
+                        className={`text-xs ${smartFilter === 'occupied' ? 'bg-purple-600 text-white hover:bg-purple-700' : ''}`}
+                      >
+                        Occupied Rooms
+                      </Button>
+                      <Button
+                        variant={smartFilter === 'pending_orders' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setSmartFilter(smartFilter === 'pending_orders' ? 'none' : 'pending_orders')}
+                        className={`text-xs ${smartFilter === 'pending_orders' ? 'bg-yellow-600 text-white hover:bg-yellow-700' : ''}`}
+                      >
+                        Pending Orders
+                      </Button>
+                      <Button
+                        variant={smartFilter === 'overdue_checkout' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setSmartFilter(smartFilter === 'overdue_checkout' ? 'none' : 'overdue_checkout')}
+                        className={`text-xs ${smartFilter === 'overdue_checkout' ? 'bg-red-600 text-white hover:bg-red-700' : ''}`}
+                      >
+                        Overdue Checkouts
+                      </Button>
+                      {(statusFilter !== 'all' || smartFilter !== 'none' || searchQuery) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setStatusFilter('all')
+                            setSmartFilter('none')
+                            setSearchQuery('')
+                          }}
+                          className="text-xs text-gray-600"
+                        >
+                          Clear All
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <button
-              onClick={() => setStatusFilter(statusFilter === 'all' ? 'available' : 'all')}
-              className="px-3 md:px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-xs md:text-sm flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-              </svg>
-              Filters
-            </button>
           </div>
 
-          {/* Rooms Grid */}
+          {/* Rooms Table */}
           {filteredRooms.length === 0 ? (
             <Card>
               <div className="p-8 text-center">
                 <p className="text-sm md:text-base text-gray-500 mb-4">
-                  {searchQuery || statusFilter !== 'all' ? 'No rooms match your filters.' : 'No rooms found. Add your first room to get started.'}
+                  {searchQuery || statusFilter !== 'all' || smartFilter !== 'none' ? 'No rooms match your filters.' : 'No rooms found. Add your first room to get started.'}
                 </p>
-                {!searchQuery && statusFilter === 'all' && (
+                {!searchQuery && statusFilter === 'all' && smartFilter === 'none' && (
                   <Button onClick={handleAddRoom} size="sm">
-                    + Add Room
+                    Add Room
                   </Button>
                 )}
               </div>
             </Card>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
+              <Card>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Room</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Guest Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Phone</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Check-In</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Check-Out</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedRooms.map((room) => {
-                const roomTypeText = extractTextFromJson(room.room_type)
-                const amenities = Array.isArray(room.amenities) ? room.amenities : []
+                        const details = roomDetails[room.id]
+                        const isLoading = loadingDetails[room.id]
+                        const isUpdating = updatingStatus === room.id
+                        const isCheckingOut = checkingOut === room.id
+                        const isEditing = editingGuest?.roomId === room.id
 
                 return (
-                  <Card key={room.id}>
-                    <div className="p-2 md:p-3">
-                      {/* Status Badge */}
-                      <div className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium mb-2 border ${getStatusColor(room.status)}`}>
-                        <span className="mr-1">{getStatusIcon(room.status)}</span>
+                          <tr key={room.id} className="hover:bg-gray-50 transition-colors">
+                            {/* Room Number */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="text-sm font-medium text-gray-900">{room.room_number}</span>
+                            </td>
+
+                            {/* Status */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(room.status)}`}>
+                                <span className="mr-1.5">{getStatusIcon(room.status)}</span>
                         {room.status.charAt(0).toUpperCase() + room.status.slice(1)}
                       </div>
+                            </td>
 
-                      {/* Room Number and Type */}
-                      <h3 className="text-sm md:text-base font-semibold text-gray-900 mb-0.5">
-                        Room {room.room_number}
-                      </h3>
-                      <p className="text-[10px] md:text-xs text-gray-600 mb-2">
-                        Floor {room.floor || 'N/A'} • {roomTypeText}
-                      </p>
+                            {/* Guest Name */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              {room.status === 'occupied' ? (
+                                isLoading ? (
+                                  <span className="text-sm text-gray-400">Loading...</span>
+                                ) : details?.guest_info ? (
+                                  isEditing && editingGuest?.field === 'name' ? (
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="text"
+                                        value={editingValues.name}
+                                        onChange={(e) => setEditingValues(prev => ({ ...prev, name: e.target.value }))}
+                                        className="text-sm px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 w-32"
+                                        autoFocus
+                                      />
+                                      <button
+                                        onClick={() => handleSaveGuestInfo(room.id)}
+                                        className="text-green-600 hover:text-green-700"
+                                        title="Save"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={handleCancelEditGuest}
+                                        className="text-red-600 hover:text-red-700"
+                                        title="Cancel"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                        </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1 group">
+                                      <span className="text-sm text-gray-900">{details.guest_info.name}</span>
+                                      <button
+                                        onClick={() => handleStartEditGuest(room.id, 'name')}
+                                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 transition-opacity"
+                                        title="Edit name"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                      </button>
+                        </div>
+                                  )
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )
+                              ) : (
+                                <span className="text-sm text-gray-400">—</span>
+                              )}
+                            </td>
 
-                      {/* Room Details */}
-                      <div className="space-y-1 mb-2 text-[10px] md:text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Bed:</span>
-                          <span className="text-gray-900 font-medium">{room.bed_type || 'N/A'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Occupancy:</span>
-                          <span className="text-gray-900 font-medium">{room.capacity}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Rate:</span>
-                          <span className="text-gray-900 font-medium">
-                            ${room.price_per_night ? room.price_per_night.toFixed(0) : 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Amenities - Scrollable Badges */}
-                      {amenities.length > 0 && (
-                        <div className="mb-2">
-                          <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-1">
-                            {amenities.map((amenity: any, idx: number) => {
-                              const amenityId = typeof amenity === 'string' ? amenity : amenity.id || amenity
-                              const amenityOption = AMENITIES_OPTIONS.find(a => a.id === amenityId)
-                              return (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-700 text-[9px] md:text-[10px] font-medium whitespace-nowrap flex-shrink-0"
-                                >
-                                  <span className="mr-0.5">{amenityOption?.icon || '•'}</span>
-                                  {amenityOption ? amenityOption.label : amenityId}
-                                </span>
-                              )
-                            })}
+                            {/* Phone */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              {room.status === 'occupied' && details?.guest_info ? (
+                                isEditing && editingGuest?.field === 'phone' ? (
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="tel"
+                                      value={editingValues.phone}
+                                      onChange={(e) => setEditingValues(prev => ({ ...prev, phone: formatPhoneNumber(e.target.value) }))}
+                                      className="text-sm px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 w-32"
+                                      autoFocus
+                                    />
+                                    <button
+                                      onClick={() => handleSaveGuestInfo(room.id)}
+                                      className="text-green-600 hover:text-green-700"
+                                      title="Save"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={handleCancelEditGuest}
+                                      className="text-red-600 hover:text-red-700"
+                                      title="Cancel"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
                           </div>
+                                ) : (
+                                  <div className="flex items-center gap-1 group">
+                                    <span className="text-sm text-gray-600">{details.guest_info.phone || '—'}</span>
+                                    {details.guest_info.phone && (
+                                      <button
+                                        onClick={() => handleStartEditGuest(room.id, 'phone')}
+                                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 transition-opacity"
+                                        title="Edit phone"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                      </button>
+                                    )}
                         </div>
-                      )}
+                                )
+                              ) : (
+                                <span className="text-sm text-gray-400">—</span>
+                              )}
+                            </td>
+
+                            {/* Check-In Date */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              {room.status === 'occupied' && details?.guest_info ? (
+                                <span className="text-sm text-gray-600">
+                                  {new Date(details.guest_info.check_in_date).toLocaleDateString()}
+                                </span>
+                              ) : (
+                                <span className="text-sm text-gray-400">—</span>
+                              )}
+                            </td>
+
+                            {/* Check-Out Date */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              {room.status === 'occupied' && details?.guest_info ? (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm ${
+                                    isCheckoutOverdue(details.guest_info.check_out_date)
+                                      ? 'text-red-600 font-semibold'
+                                      : 'text-gray-600'
+                                  }`}>
+                                    {new Date(details.guest_info.check_out_date).toLocaleDateString()}
+                                  </span>
+                                  {isCheckoutOverdue(details.guest_info.check_out_date) && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-300">
+                                      ⚠️ {getDaysOverdue(details.guest_info.check_out_date)}d overdue
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400">—</span>
+                              )}
+                            </td>
 
                       {/* Actions */}
-                      <div className="flex gap-1.5 mt-2">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                {room.status === 'available' && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleQuickCheckIn(room)}
+                                    className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1"
+                                  >
+                                    Check In
+                                  </Button>
+                                )}
+                                
+                                {room.status === 'occupied' && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleQuickCheckOut(room)}
+                                      disabled={isCheckingOut}
+                                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1"
+                                    >
+                                      {isCheckingOut ? 'Checking Out...' : 'Check Out'}
+                                    </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                                      onClick={() => handleShowOrders(room.id, room.room_number)}
+                                      className="text-xs px-2 py-1"
+                                      title="View Orders"
+                                    >
+                                      Orders
+                        </Button>
+                                  </>
+                                )}
+
+                                {room.status !== 'occupied' && (
+                                  <div className="flex gap-1">
+                                    {room.status !== 'cleaning' && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowStatusModal({ room, newStatus: 'cleaning' })}
+                                        disabled={isUpdating}
+                                        className="text-xs px-2 py-1"
+                                        title="Mark as Cleaning"
+                                      >
+                                        ✨
+                                      </Button>
+                                    )}
+                                    {room.status !== 'maintenance' && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowStatusModal({ room, newStatus: 'maintenance' })}
+                                        disabled={isUpdating}
+                                        className="text-xs px-2 py-1"
+                                        title="Mark as Maintenance"
+                                      >
+                                        🔧
+                                      </Button>
+                                    )}
+                                    {room.status !== 'available' && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowStatusModal({ room, newStatus: 'available' })}
+                                        disabled={isUpdating}
+                                        className="text-xs px-2 py-1"
+                                        title="Mark as Available"
+                                      >
+                                        ✓
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
+
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleEditRoom(room)}
-                          className="flex-1 text-[10px] md:text-xs px-1.5 py-1"
+                                  className="text-xs px-2 py-1"
+                                  title="Edit Guest Info"
                         >
-                          <svg className="w-3 h-3 md:w-3.5 md:h-3.5 mr-0.5 md:mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
-                          <span className="hidden md:inline">Edit</span>
                         </Button>
+
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleDeleteRoom(room.id)}
-                          className="px-1.5 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300 text-xs px-2 py-1"
+                                  title="Delete Room"
                         >
-                          <svg className="w-3 h-3 md:w-3.5 md:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </Button>
+
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setShowQRCode({ roomNumber: room.room_number })}
+                                  className="text-xs px-2 py-1"
+                                  title="Generate QR Code"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                  </svg>
+                                </Button>
                       </div>
-                    </div>
-                  </Card>
+                            </td>
+                          </tr>
                 )
               })}
+                    </tbody>
+                  </table>
               </div>
+              </Card>
 
               {/* Pagination Controls */}
               {totalPages > 1 && (
-                <div className="mt-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                  {/* Items per page selector */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs md:text-sm text-gray-700">Show:</label>
-                    <select
-                      value={itemsPerPage}
-                      onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-                      className="px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm"
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                    <span className="text-xs md:text-sm text-gray-600">
-                      of {filteredRooms.length} rooms
-                    </span>
-                  </div>
-
-                  {/* Page navigation */}
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
-                      className="text-xs md:text-sm"
-                    >
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                      Previous
-                    </Button>
-
-                    {/* Page numbers */}
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                        let pageNum: number
-                        if (totalPages <= 5) {
-                          pageNum = i + 1
-                        } else if (currentPage <= 3) {
-                          pageNum = i + 1
-                        } else if (currentPage >= totalPages - 2) {
-                          pageNum = totalPages - 4 + i
-                        } else {
-                          pageNum = currentPage - 2 + i
-                        }
-
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => handlePageChange(pageNum)}
-                            className={`px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm rounded-lg transition-colors ${
-                              currentPage === pageNum
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        )
-                      })}
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                      className="text-xs md:text-sm"
-                    >
-                      Next
-                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </Button>
-                  </div>
-
-                  {/* Page info */}
-                  <div className="text-xs md:text-sm text-gray-600">
+                <div className="mt-6 flex items-center justify-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-2"
+                    title="Previous page"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </Button>
+                  
+                  <span className="text-sm text-gray-600">
                     Page {currentPage} of {totalPages}
-                  </div>
-                </div>
-              )}
-
-              {/* Show pagination info even when only one page */}
-              {totalPages === 1 && filteredRooms.length > 0 && (
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs md:text-sm text-gray-700">Show:</label>
-                    <select
-                      value={itemsPerPage}
-                      onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-                      className="px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm"
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                  </div>
-                  <span className="text-xs md:text-sm text-gray-600">
-                    Showing all {filteredRooms.length} rooms
                   </span>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-2"
+                    title="Next page"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Button>
                 </div>
               )}
             </>
           )}
         </>
+      )}
+
+      {/* QR Code Modal for Single Room */}
+      {showQRCode && selectedHotel && (
+        <Modal
+          isOpen={!!showQRCode}
+          onClose={() => setShowQRCode(null)}
+          title={`QR Code - ${showQRCode.roomNumber}`}
+          size="md"
+        >
+          <QRCodeGenerator
+            hotelId={selectedHotel}
+            roomNumber={showQRCode.roomNumber}
+            onClose={() => setShowQRCode(null)}
+          />
+        </Modal>
+      )}
+
+      {/* QR Code Print View for All Rooms */}
+      {showAllQRCodes && selectedHotel && (
+        <Modal
+          isOpen={showAllQRCodes}
+          onClose={() => setShowAllQRCodes(false)}
+          title="QR Codes for All Rooms"
+          size="lg"
+        >
+          <QRCodePrintView
+            hotelId={selectedHotel}
+            rooms={rooms}
+          />
+        </Modal>
+      )}
+
+      {/* Check-In Modal */}
+      {showCheckInModal && (
+        <Modal
+          isOpen={!!showCheckInModal}
+          onClose={() => setShowCheckInModal(null)}
+          title={`Check-In Guest - Room ${showCheckInModal.room_number}`}
+          size="md"
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Guest Name *
+              </label>
+              <input
+                type="text"
+                value={checkInFormData.guest_name}
+                onChange={(e) => setCheckInFormData(prev => ({ ...prev, guest_name: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="John Doe"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Guest Email
+              </label>
+              <input
+                type="email"
+                value={checkInFormData.guest_email}
+                onChange={(e) => setCheckInFormData(prev => ({ ...prev, guest_email: formatEmail(e.target.value) }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="guest@example.com"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Guest Phone
+              </label>
+              <input
+                type="tel"
+                value={checkInFormData.guest_phone}
+                onChange={(e) => setCheckInFormData(prev => ({ ...prev, guest_phone: formatPhoneNumber(e.target.value) }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="+1 (555) 123-4567"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Check-In Date *
+                </label>
+                <input
+                  type="date"
+                  value={checkInFormData.check_in_date}
+                  onChange={(e) => setCheckInFormData(prev => ({ ...prev, check_in_date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Check-Out Date *
+                </label>
+                <input
+                  type="date"
+                  value={checkInFormData.check_out_date}
+                  onChange={(e) => setCheckInFormData(prev => ({ ...prev, check_out_date: e.target.value }))}
+                  min={checkInFormData.check_in_date || undefined}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Special Requests
+              </label>
+              <textarea
+                value={checkInFormData.special_requests}
+                onChange={(e) => setCheckInFormData(prev => ({ ...prev, special_requests: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={3}
+                placeholder="Any special requests or notes..."
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowCheckInModal(null)}
+                className="flex-1"
+                disabled={checkingIn}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => handleConfirmCheckIn(showCheckInModal)}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                disabled={checkingIn}
+              >
+                {checkingIn ? 'Checking In...' : 'Check In Guest'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Check-Out Confirmation Modal */}
+      {showCheckOutModal && (
+        <Modal
+          isOpen={!!showCheckOutModal}
+          onClose={() => setShowCheckOutModal(null)}
+          title={roomDetails[showCheckOutModal.id]?.pending_orders_count > 0 ? "⚠️ Confirm Check-Out: Pending Orders" : "Confirm Check-Out"}
+          size="md"
+        >
+          <div className="space-y-4">
+            {roomDetails[showCheckOutModal.id]?.pending_orders_count > 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-yellow-800 mb-2">
+                  This room has pending service orders that need to be paid.
+                </p>
+                {roomDetails[showCheckOutModal.id] && (
+                  <div className="text-sm text-yellow-700">
+                    <p><strong>Pending Orders:</strong> {roomDetails[showCheckOutModal.id].pending_orders_count}</p>
+                    <p><strong>Total Amount:</strong> ${roomDetails[showCheckOutModal.id].pending_orders_total.toFixed(2)}</p>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="text-sm text-gray-700 space-y-1">
+                <p><strong>Guest:</strong> {roomDetails[showCheckOutModal.id]?.guest_info?.name || 'N/A'}</p>
+                <p><strong>Room:</strong> {showCheckOutModal.room_number}</p>
+                {roomDetails[showCheckOutModal.id]?.guest_info && (
+                  <>
+                    <p><strong>Check-In:</strong> {new Date(roomDetails[showCheckOutModal.id].guest_info.check_in_date).toLocaleDateString()}</p>
+                    <p><strong>Check-Out:</strong> {new Date(roomDetails[showCheckOutModal.id].guest_info.check_out_date).toLocaleDateString()}</p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {roomDetails[showCheckOutModal.id]?.pending_orders_count > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  The guest will be checked out, and a folio will be generated. Orders will remain pending until paid in the Folios page.
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowCheckOutModal(null)}
+                className="flex-1"
+                disabled={checkingOut === showCheckOutModal.id}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => handleConfirmCheckOut(showCheckOutModal)}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={checkingOut === showCheckOutModal.id}
+              >
+                {checkingOut === showCheckOutModal.id ? 'Checking Out...' : 'Confirm Check-Out'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Status Change Confirmation Modal */}
+      {showStatusModal && (
+        <Modal
+          isOpen={!!showStatusModal}
+          onClose={() => setShowStatusModal(null)}
+          title="Change Room Status"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              Are you sure you want to change room {showStatusModal.room.room_number} status to{' '}
+              <strong>{showStatusModal.newStatus}</strong>?
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowStatusModal(null)}
+                className="flex-1"
+                disabled={updatingStatus === showStatusModal.room.id}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => handleQuickStatusChange(showStatusModal.room.id, showStatusModal.newStatus)}
+                className="flex-1"
+                disabled={updatingStatus === showStatusModal.room.id}
+              >
+                {updatingStatus === showStatusModal.room.id ? 'Updating...' : 'Confirm'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Orders Modal */}
+      {showOrdersModal && (
+        <Modal
+          isOpen={!!showOrdersModal}
+          onClose={() => {
+            setShowOrdersModal(null)
+            setOrders([])
+          }}
+          title={`Pending Orders - Room ${showOrdersModal.roomNumber}`}
+          size="lg"
+        >
+          <div className="space-y-4">
+            {loadingOrders ? (
+              <div className="text-center py-8">
+                <div className="text-sm text-gray-500">Loading orders...</div>
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-sm text-gray-500">No pending orders found for this room.</div>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {orders.map((order) => {
+                  const statusColors: Record<string, string> = {
+                    pending: 'bg-yellow-100 text-yellow-800',
+                    confirmed: 'bg-blue-100 text-blue-800',
+                    preparing: 'bg-purple-100 text-purple-800',
+                    ready: 'bg-green-100 text-green-800',
+                    out_for_delivery: 'bg-indigo-100 text-indigo-800',
+                    delivered: 'bg-gray-100 text-gray-800',
+                    cancelled: 'bg-red-100 text-red-800',
+                  }
+
+                  const paymentColors: Record<string, string> = {
+                    pending: 'bg-orange-100 text-orange-800',
+                    paid: 'bg-green-100 text-green-800',
+                    refunded: 'bg-red-100 text-red-800',
+                  }
+
+                  // Detect order types from items
+                  const orderItems = order.items && Array.isArray(order.items) ? order.items : []
+                  const { types: detectedTypes } = detectOrderTypesFromItems(orderItems)
+                  const typeLabels = getOrderTypeLabels(detectedTypes)
+                  const typeColors = getOrderTypeColors(detectedTypes)
+
+                  return (
+                    <Card key={order.id} className="p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-sm font-semibold text-gray-900">
+                              Order #{order.order_number}
+                            </span>
+                            {typeLabels.map((label, idx) => (
+                              <span key={idx} className={`px-2 py-0.5 rounded text-xs font-medium ${typeColors[idx] || 'bg-gray-100 text-gray-700'}`}>
+                                {label}
+                              </span>
+                            ))}
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[order.status] || 'bg-gray-100 text-gray-700'}`}>
+                              {order.status.toUpperCase().replace('_', ' ')}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-600 space-y-0.5">
+                            {order.subtotal && order.subtotal !== order.total_amount && (
+                              <p><strong>Subtotal:</strong> ${order.subtotal.toFixed(2)}</p>
+                            )}
+                            {order.discount_amount && order.discount_amount > 0 && (
+                              <p className="text-green-600"><strong>Discount:</strong> -${order.discount_amount.toFixed(2)}</p>
+                            )}
+                            <p><strong>Total:</strong> ${order.total_amount.toFixed(2)}</p>
+                            <p><strong>Created:</strong> {formatTimestamp(order.created_at, hotelTimezone, { format: 'datetime' })}</p>
+                            {order.delivered_at && (
+                              <p><strong>Delivered:</strong> {formatTimestamp(order.delivered_at, hotelTimezone, { format: 'datetime' })}</p>
+                            )}
+                            {order.special_instructions && (
+                              <p className="mt-1"><strong>Instructions:</strong> {order.special_instructions}</p>
+                            )}
+                          </div>
+                          {order.items && Array.isArray(order.items) && order.items.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-gray-200">
+                              <p className="text-xs font-medium text-gray-700 mb-1">Items:</p>
+                              <div className="space-y-0.5">
+                                {order.items.map((item: any, idx: number) => {
+                                  // Handle different item structures
+                                  const itemName = item.menuItem?.name || item.name || item.menu_item_name || 'Item'
+                                  const itemPrice = item.menuItem?.price || item.price || item.unit_price || 0
+                                  const itemQuantity = item.quantity || 1
+                                  const totalPrice = parseFloat(itemPrice.toString()) * itemQuantity
+                                  
+                                  return (
+                                    <div key={idx} className="text-xs text-gray-600">
+                                      • {itemName} x{itemQuantity} - ${totalPrice.toFixed(2)}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   )

@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal'
 import { ServiceForm } from './ServiceForm'
 import { extractTextFromJson } from '@/lib/utils/json-text'
 import type { Service } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 export function ServicesList() {
   const [services, setServices] = useState<Service[]>([])
@@ -34,7 +35,7 @@ export function ServicesList() {
       const data = await getHotels()
       setHotels(data)
     } catch (err) {
-      console.error('Failed to load hotels:', err)
+      logger.error('Failed to load hotels:', err)
     }
   }
 
@@ -108,7 +109,7 @@ export function ServicesList() {
           <p className="text-sm text-gray-500">Manage services and service configurations.</p>
         </div>
         <Button onClick={() => setIsModalOpen(true)} className="bg-gray-900 text-white hover:bg-gray-800">
-          + Add Service
+          Add Service
         </Button>
       </div>
 
@@ -235,6 +236,7 @@ export function ServicesList() {
       >
         <ServiceForm
           service={editingService || undefined}
+          hotelId={selectedHotelId || hotels[0]?.id || ''}
           onSubmit={editingService ? handleUpdate : handleCreate}
           onCancel={closeModal}
         />

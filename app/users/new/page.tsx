@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { UserFormPage } from '@/components/users/UserFormPage'
 import { supabase } from '@/lib/supabase/client'
 import { addUserToHotel } from '@/lib/database/hotel-users'
+import { logger } from '@/lib/utils/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,7 @@ export default function NewUserPage() {
       // Show appropriate message based on email sending result
       if (result.warning || result.error) {
         // Email sending failed, but user was created
-        console.warn('User created but email failed:', result.error || result.warning)
+        logger.warn('User created but email failed:', result.error || result.warning)
         alert(`User created successfully, but email sending failed.\n\n${result.error || result.warning}\n\nPassword: ${result.password || 'N/A'}\n\nPlease share the password with the user manually.`)
       } else if (result.message) {
         // Success with email sent

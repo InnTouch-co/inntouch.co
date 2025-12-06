@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceRequest } from '@/lib/database/service-requests'
+import { logger } from '@/lib/utils/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (userError) {
-      console.error('Error loading user:', userError)
+      logger.error('Error loading user:', userError)
       return NextResponse.json({ 
         error: `Error loading user information: ${userError.message}` 
       }, { status: 500 })
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (hotelUserError) {
-      console.error('Error checking hotel assignment:', hotelUserError)
+      logger.error('Error checking hotel assignment:', hotelUserError)
       return NextResponse.json({ 
         error: `Error verifying hotel access: ${hotelUserError.message}` 
       }, { status: 500 })
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
         .eq('user_id', userId)
         .eq('is_deleted', false)
 
-      console.error('Hotel access denied:', {
+      logger.error('Hotel access denied:', {
         requestedHotelId: hotel_id,
         authUserId: authUser.id,
         dbUserId: userId,
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(newRequest, { status: 201 })
 
   } catch (error) {
-    console.error('Error creating service request:', error)
+    logger.error('Error creating service request:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to create service request' },
       { status: 500 }

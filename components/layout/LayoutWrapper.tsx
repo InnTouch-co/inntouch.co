@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { Toaster } from 'sonner'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { SidebarProvider } from './SidebarContext'
 import { PasswordChangeModal } from '@/components/auth/PasswordChangeModal'
 import { getCurrentUserClient, signOut } from '@/lib/auth/auth-client'
 import { supabase } from '@/lib/supabase/client'
+import { logger } from '@/lib/utils/logger'
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -17,24 +19,28 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const isLoginPage = pathname === '/login'
+  // Guest pages are /guest/[hotelId], not /guest-settings
+  const isGuestPage = pathname.startsWith('/guest/')
+  // Kitchen and bar pages have their own layout (no sidebar/header)
+  const isKitchenBarPage = pathname === '/kitchen' || pathname === '/bar' || pathname.startsWith('/kitchen/') || pathname.startsWith('/bar/')
   const isSuperAdmin = user?.role_id === 'super_admin'
 
   useEffect(() => {
-    if (!isLoginPage) {
+    if (!isLoginPage && !isGuestPage) {
       loadUser()
       checkPasswordChangeRequired()
     } else {
       setCheckingPassword(false)
       setLoadingUser(false)
     }
-  }, [isLoginPage])
+  }, [isLoginPage, isGuestPage])
 
   const loadUser = async () => {
     try {
       const currentUser = await getCurrentUserClient()
       setUser(currentUser)
     } catch (error) {
-      console.error('Failed to load user:', error)
+      logger.error('Failed to load user:', error)
     } finally {
       setLoadingUser(false)
     }
@@ -43,7 +49,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   // Check session timeout - logout after 1 hour from login
   useEffect(() => {
-    if (isLoginPage) return
+    if (isLoginPage || isGuestPage || isKitchenBarPage) return
 
     const checkSessionTimeout = async () => {
       try {
@@ -86,7 +92,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
           router.push('/login?error=session_expired')
         }
       } catch (error) {
-        console.error('Error checking session timeout:', error)
+        logger.error('Error checking session timeout:', error)
       }
     }
 
@@ -97,7 +103,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const interval = setInterval(checkSessionTimeout, 30000)
 
     return () => clearInterval(interval)
-  }, [isLoginPage, router])
+  }, [isLoginPage, isGuestPage, router])
 
   const checkPasswordChangeRequired = async () => {
     try {
@@ -106,7 +112,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         setShowPasswordModal(true)
       }
     } catch (error) {
-      console.error('Error checking password change requirement:', error)
+      logger.error('Error checking password change requirement:', error)
     } finally {
       setCheckingPassword(false)
     }
@@ -118,25 +124,44 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     router.refresh()
   }
 
-  if (isLoginPage) {
-    return <>{children}</>
+  // Kitchen/bar pages have their own full-screen layout (no sidebar/header)
+  if (isLoginPage || isGuestPage || isKitchenBarPage) {
+    return (
+      <>
+        <Toaster position="top-center" richColors />
+        {!checkingPassword && (
+          <PasswordChangeModal
+            isOpen={showPasswordModal}
+            onSuccess={handlePasswordChangeSuccess}
+          />
+        )}
+        <div className={isKitchenBarPage ? 'min-h-screen w-full' : ''}>
+          {children}
+        </div>
+      </>
+    )
   }
 
   return (
     <SidebarProvider>
-      <Sidebar />
-      {!isSuperAdmin && <Header />}
-      <main className={`${isSuperAdmin ? 'pt-14 md:pt-0 md:ml-64' : 'pt-[104px] md:pt-0 md:ml-64'} min-h-screen transition-all duration-300 pb-8`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
-          {children}
-        </div>
-      </main>
-      {!checkingPassword && (
-        <PasswordChangeModal
-          isOpen={showPasswordModal}
-          onSuccess={handlePasswordChangeSuccess}
-        />
-      )}
+      <div className="flex flex-col min-h-screen">
+        <Toaster position="top-center" richColors />
+        <Sidebar />
+        {!isSuperAdmin && <Header />}
+        <main className={`${isSuperAdmin ? 'pt-14 md:pt-0 md:ml-64' : 'pt-[104px] md:pt-0 md:ml-64'} flex-1 transition-all duration-300 pb-8`}>
+          <div className={`${pathname === '/rooms' ? 'max-w-full' : 'max-w-7xl'} mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8`}>
+            {children}
+          </div>
+        </main>
+        {!checkingPassword && (
+          <PasswordChangeModal
+            isOpen={showPasswordModal}
+            onSuccess={handlePasswordChangeSuccess}
+          />
+        )}
+        
+        {/* Cookie Consent Banner - Only for guest site, not admin */}
+      </div>
     </SidebarProvider>
   )
 }

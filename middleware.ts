@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { logger } from '@/lib/utils/logger'
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -42,7 +43,7 @@ export async function middleware(request: NextRequest) {
       // The page will handle authentication on client side
       else if (authError.message?.includes('fetch') || authError.message?.includes('network')) {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[Middleware] Network error during auth check, allowing request:', authError.message)
+          logger.warn('[Middleware] Network error during auth check, allowing request:', authError.message)
         }
         // Allow request to proceed - client-side will handle auth
         return response
@@ -50,7 +51,7 @@ export async function middleware(request: NextRequest) {
       // For other unexpected auth errors, log but don't block
       else {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[Middleware] Auth error (non-critical):', authError.message)
+          logger.warn('[Middleware] Auth error (non-critical):', authError.message)
         }
         // Treat as no user - continue with normal flow
         authUser = null
@@ -62,7 +63,7 @@ export async function middleware(request: NextRequest) {
     // Handle network/timeout errors gracefully
     if (error instanceof Error && (error.message.includes('fetch') || error.message.includes('network'))) {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('[Middleware] Network error during auth check, allowing request to proceed:', error.message)
+        logger.warn('[Middleware] Network error during auth check, allowing request to proceed:', error.message)
       }
       // Allow request to proceed - client-side will handle auth
       return response
@@ -70,7 +71,7 @@ export async function middleware(request: NextRequest) {
     
     // For other errors, log but allow to proceed (fail open)
     if (process.env.NODE_ENV === 'development') {
-      console.warn('[Middleware] Unexpected error (non-critical):', error)
+      logger.warn('[Middleware] Unexpected error (non-critical):', error)
     }
     // Treat as no user - continue with normal flow
     authUser = null
@@ -97,7 +98,7 @@ export async function middleware(request: NextRequest) {
     } catch (error) {
       // If session check fails, continue with user check
       if (process.env.NODE_ENV === 'development') {
-        console.warn('[Middleware] Session check failed, continuing:', error)
+        logger.warn('[Middleware] Session check failed, continuing:', error)
       }
     }
   }
@@ -105,7 +106,18 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/api/debug']
+  const publicRoutes = [
+    '/login', 
+    '/api/debug', 
+    '/guest', 
+    '/api/guest', 
+    '/api/messaging',
+    '/api/consent',
+    '/privacy-policy',
+    '/terms-of-service',
+    '/cookie-policy',
+    '/privacy-settings',
+  ]
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
 
   // If not authenticated and trying to access protected route, redirect to login
@@ -135,7 +147,7 @@ export async function middleware(request: NextRequest) {
 
       // Log for debugging (in development)
       if (process.env.NODE_ENV === 'development') {
-        console.log('[Middleware] User check:', {
+        logger.debug('[Middleware] User check:', {
           email: authUser.email,
           userData: userData,
           foundCount: userDataArray?.length || 0,
@@ -148,7 +160,7 @@ export async function middleware(request: NextRequest) {
         // If it's a network/fetch error, allow request to proceed
         if (userError.message?.includes('fetch') || userError.message?.includes('network')) {
           if (process.env.NODE_ENV === 'development') {
-            console.warn('[Middleware] Database network error, allowing request:', userError.message)
+            logger.warn('[Middleware] Database network error, allowing request:', userError.message)
           }
           return response
         }
@@ -182,13 +194,69 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL('/admin/hotel', request.url))
       }
 
+      // Front desk should go to /front-desk instead of root
+      if (userRole === 'front_desk' && pathname === '/') {
+        return NextResponse.redirect(new URL('/front-desk', request.url))
+      }
+
+      // Redirect kitchen/bar staff to their respective pages
+      if (userRole === 'staff' && pathname === '/') {
+        // Get user's department from database
+        const { data: userData } = await supabase
+          .from('users')
+          .select('department')
+          .eq('email', authUser.email)
+          .eq('is_deleted', false)
+          .maybeSingle()
+        
+        if (userData?.department === 'kitchen') {
+          return NextResponse.redirect(new URL('/kitchen', request.url))
+        } else if (userData?.department === 'bar') {
+          return NextResponse.redirect(new URL('/bar', request.url))
+        } else if (userData?.department === 'both') {
+          // If both, default to kitchen (can be changed later)
+          return NextResponse.redirect(new URL('/kitchen', request.url))
+        }
+      }
+
       // Super admin should stay on root, but hotel admin routes are protected
       if (pathname.startsWith('/admin/hotel') && userRole !== 'hotel_admin' && userRole !== 'super_admin') {
         return NextResponse.redirect(new URL('/', request.url))
       }
 
+      // Protect kitchen/bar routes - only allow staff with appropriate department
+      if (pathname === '/kitchen' || pathname.startsWith('/kitchen')) {
+        if (userRole !== 'staff') {
+          return NextResponse.redirect(new URL('/', request.url))
+        }
+        const { data: userData } = await supabase
+          .from('users')
+          .select('department')
+          .eq('email', authUser.email)
+          .eq('is_deleted', false)
+          .maybeSingle()
+        if (userData?.department !== 'kitchen' && userData?.department !== 'both') {
+          return NextResponse.redirect(new URL('/', request.url))
+        }
+      }
+
+      if (pathname === '/bar' || pathname.startsWith('/bar')) {
+        if (userRole !== 'staff') {
+          return NextResponse.redirect(new URL('/', request.url))
+        }
+        const { data: userData } = await supabase
+          .from('users')
+          .select('department')
+          .eq('email', authUser.email)
+          .eq('is_deleted', false)
+          .maybeSingle()
+        if (userData?.department !== 'bar' && userData?.department !== 'both') {
+          return NextResponse.redirect(new URL('/', request.url))
+        }
+      }
+
       // Super admin only routes
-      const superAdminRoutes = ['/hotels', '/users']
+      const superAdminRoutes = ['/hotels', '/users', '/admin/folios']
       if (superAdminRoutes.some(route => pathname.startsWith(route)) && userRole !== 'super_admin') {
         return NextResponse.redirect(new URL('/', request.url))
       }
@@ -196,7 +264,7 @@ export async function middleware(request: NextRequest) {
       // Handle unexpected errors gracefully
       if (error instanceof Error && (error.message.includes('fetch') || error.message.includes('network'))) {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[Middleware] Error checking user data, allowing request:', error.message)
+          logger.warn('[Middleware] Error checking user data, allowing request:', error.message)
         }
         // Allow request to proceed - client will handle auth
         return response
@@ -204,7 +272,7 @@ export async function middleware(request: NextRequest) {
       
       // Log unexpected errors but allow request to proceed
       if (process.env.NODE_ENV === 'development') {
-        console.error('[Middleware] Unexpected error in user check:', error)
+        logger.error('[Middleware] Unexpected error in user check:', error)
       }
       return response
     }

@@ -5,9 +5,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Input } from '@/components/ui/Input'
 import { extractTextFromJson, textToJson } from '@/lib/utils/json-text'
+import { formatPhoneNumber } from '@/lib/utils/phone-mask'
+import { formatEmail } from '@/lib/utils/email-validation'
 import { getUsers } from '@/lib/database/users'
 import { getHotelUsers } from '@/lib/database/hotel-users'
 import type { Hotel, HotelInsert, User } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
+import { COMMON_TIMEZONES } from '@/lib/utils/hotel-timezone'
 
 interface HotelFormPageProps {
   hotel?: Hotel
@@ -42,6 +46,7 @@ export function HotelFormPage({ hotel, onSubmit, onCancel }: HotelFormPageProps)
   const [address, setAddress] = useState(hotel?.address || '')
   const [site, setSite] = useState(hotel?.site || '')
   const [status, setStatus] = useState(hotel?.active ?? true)
+  const [timezone, setTimezone] = useState((hotel as any)?.timezone || 'America/Chicago')
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const [availableUsers, setAvailableUsers] = useState<User[]>([])
   const [loadingUsers, setLoadingUsers] = useState(true)
@@ -58,7 +63,7 @@ export function HotelFormPage({ hotel, onSubmit, onCancel }: HotelFormPageProps)
       const users = await getUsers()
       setAvailableUsers(users)
     } catch (err) {
-      console.error('Failed to load users:', err)
+      logger.error('Failed to load users:', err)
     } finally {
       setLoadingUsers(false)
     }
@@ -71,7 +76,7 @@ export function HotelFormPage({ hotel, onSubmit, onCancel }: HotelFormPageProps)
       const userIds = hotelUsers.map((hu: any) => hu.user_id)
       setSelectedUserIds(userIds)
     } catch (err) {
-      console.error('Failed to load hotel users:', err)
+      logger.error('Failed to load hotel users:', err)
     }
   }
 
@@ -106,6 +111,7 @@ export function HotelFormPage({ hotel, onSubmit, onCancel }: HotelFormPageProps)
         phone: phone || null,
         active: status,
         room_count: numRooms ? parseInt(numRooms) || 0 : 0,
+        timezone: timezone || 'America/Chicago',
       }
 
       await onSubmit(hotelData, selectedUserIds)
@@ -162,7 +168,7 @@ export function HotelFormPage({ hotel, onSubmit, onCancel }: HotelFormPageProps)
         <div>
           <label className="text-sm font-medium text-gray-700">Status</label>
           <p className="text-xs text-gray-500 mt-1">
-            {status ? 'Property is active and available for bookings' : 'Property is deactivated and unavailable'}
+            {status ? 'Property is active and available' : 'Property is deactivated'}
           </p>
         </div>
         <button
@@ -273,7 +279,7 @@ export function HotelFormPage({ hotel, onSubmit, onCancel }: HotelFormPageProps)
               label="Email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail(formatEmail(e.target.value))}
               placeholder="info@hotel.com"
             />
 
@@ -281,7 +287,7 @@ export function HotelFormPage({ hotel, onSubmit, onCancel }: HotelFormPageProps)
               label="Phone"
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
               placeholder="+1 (555) 123-4567"
             />
 
@@ -323,8 +329,27 @@ export function HotelFormPage({ hotel, onSubmit, onCancel }: HotelFormPageProps)
             </div>
 
             <div className="mt-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6">Regional Settings</h3>
-              <p className="text-sm text-gray-500">Regional settings configuration coming soon...</p>
+              <h3 className="text-lg font-semibold text-gray-900 mb-6">Timezone</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hotel Timezone *
+                </label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  required
+                >
+                  {COMMON_TIMEZONES.map((tz) => (
+                    <option key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  All dates and times will be based on this timezone
+                </p>
+              </div>
             </div>
           </div>
         )}

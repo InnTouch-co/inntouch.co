@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { updateServiceRequest, deleteServiceRequest, getServiceRequestById } from '@/lib/database/service-requests'
+import { logger } from '@/lib/utils/logger'
 
 export async function PATCH(
   request: NextRequest,
@@ -30,7 +31,7 @@ export async function PATCH(
       .maybeSingle()
 
     if (userError || !currentUserData) {
-      console.error('Error loading user or user not found:', userError)
+      logger.error('Error loading user or user not found:', userError)
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
@@ -44,7 +45,7 @@ export async function PATCH(
       .maybeSingle()
 
     if (hotelUserError) {
-      console.error('Error checking hotel assignment:', hotelUserError)
+      logger.error('Error checking hotel assignment:', hotelUserError)
       return NextResponse.json({ error: 'Error verifying hotel access' }, { status: 500 })
     }
 
@@ -70,7 +71,7 @@ export async function PATCH(
     return NextResponse.json(updatedRequest)
 
   } catch (error) {
-    console.error('Error updating service request:', error)
+    logger.error('Error updating service request:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to update service request' },
       { status: 500 }
@@ -105,7 +106,7 @@ export async function DELETE(
       .maybeSingle()
 
     if (userError || !currentUserData) {
-      console.error('Error loading user or user not found:', userError)
+      logger.error('Error loading user or user not found:', userError)
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
@@ -119,7 +120,7 @@ export async function DELETE(
       .maybeSingle()
 
     if (hotelUserError) {
-      console.error('Error checking hotel assignment:', hotelUserError)
+      logger.error('Error checking hotel assignment:', hotelUserError)
       return NextResponse.json({ error: 'Error verifying hotel access' }, { status: 500 })
     }
 
@@ -134,7 +135,7 @@ export async function DELETE(
     return NextResponse.json({ message: 'Service request deleted successfully' })
 
   } catch (error) {
-    console.error('Error deleting service request:', error)
+    logger.error('Error deleting service request:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to delete service request' },
       { status: 500 }

@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase/client'
 import type { AuthUser } from './types'
+import { logger } from '@/lib/utils/logger'
 
 /**
  * Get current user on client side
@@ -33,7 +34,7 @@ export async function getCurrentUserClient(): Promise<AuthUser | null> {
 
     return userData as AuthUser
   } catch (error) {
-    console.error('Error getting current user:', error)
+    logger.error('Error getting current user:', error)
     return null
   }
 }

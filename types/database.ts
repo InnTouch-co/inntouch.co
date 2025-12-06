@@ -10,8 +10,10 @@ export interface Hotel {
   phone?: string | null
   active: boolean
   room_count?: number | null
+  timezone?: string | null
   created_at: string
   updated_at?: string | null
+  guest_settings?: Json | null
 }
 
 export interface User {
@@ -27,6 +29,7 @@ export interface User {
   active: number
   is_deleted: boolean
   must_change_password?: boolean | null
+  department?: 'kitchen' | 'bar' | 'both' | null
   created_at: string
   updated_at?: string | null
 }
@@ -64,6 +67,15 @@ export interface Service {
   is_deleted: boolean
   created_at: string
   updated_at?: string | null
+  // Extended fields for widget-based management
+  service_type?: string | null
+  description?: Json | null
+  menu?: Json | null
+  photos?: string[] | null
+  operating_hours?: Json | null
+  contact_info?: Json | null
+  settings?: Json | null
+  display_order?: number | null
 }
 
 export interface ServiceProduct {
@@ -83,6 +95,7 @@ export type UserInsert =
     is_deleted?: boolean  // Make optional since it has a default value in database
     active?: number  // Make optional since it has a default value
     must_change_password?: boolean  // Make optional since it has a default value in database
+    department?: 'kitchen' | 'bar' | 'both' | null  // Make optional
   }
 export type ProductInsert = Omit<Product, 'id' | 'created_at' | 'updated_at'>
 export type ServiceInsert = Omit<Service, 'id' | 'created_at' | 'updated_at'>

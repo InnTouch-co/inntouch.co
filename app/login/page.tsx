@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { formatEmail } from '@/lib/utils/email-validation'
 import { signIn } from '@/lib/auth/auth-client'
 
 export default function LoginPage() {
@@ -83,7 +84,7 @@ export default function LoginPage() {
               label="Email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail(formatEmail(e.target.value))}
               placeholder="Enter your email"
               required
               autoComplete="email"

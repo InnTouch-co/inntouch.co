@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createUser } from '@/lib/database/users'
 import { textToJson } from '@/lib/utils/json-text'
+import { logger } from '@/lib/utils/logger'
 
 /**
  * Generate a random password
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
         : 'New auth user created',
     })
   } catch (error: any) {
-    console.error('Error creating hotel admin:', error)
+    logger.error('Error creating hotel admin:', error)
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

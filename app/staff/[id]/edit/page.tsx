@@ -7,7 +7,12 @@ import { Card } from '@/components/ui/Card'
 import { getUserById, updateUser } from '@/lib/database/users'
 import { extractTextFromJson, textToJson } from '@/lib/utils/json-text'
 import { formatPhoneNumber } from '@/lib/utils/phone-mask'
+import { formatEmail } from '@/lib/utils/email-validation'
+import { getHotels } from '@/lib/database/hotels'
+import { addUserToHotel, removeUserFromHotel } from '@/lib/database/hotel-users'
+import { supabase } from '@/lib/supabase/client'
 import type { User } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 type TabType = 'general' | 'schedule'
 
@@ -31,9 +36,14 @@ export default function EditStaffMemberPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [department, setDepartment] = useState<'kitchen' | 'bar' | 'both' | null>(null)
+  const [availableHotels, setAvailableHotels] = useState<any[]>([])
+  const [selectedHotelIds, setSelectedHotelIds] = useState<string[]>([])
+  const [loadingHotels, setLoadingHotels] = useState(true)
 
-  // Load user data
+  // Load user data and hotels
   useEffect(() => {
+    loadHotels()
     loadStaffMember()
 
     return () => {
@@ -51,6 +61,18 @@ export default function EditStaffMemberPage() {
       setPhone(defaultPhone)
     }
   }, [user, defaultName, defaultEmail, defaultPhone])
+
+  const loadHotels = useCallback(async () => {
+    try {
+      setLoadingHotels(true)
+      const hotelsData = await getHotels()
+      setAvailableHotels(hotelsData)
+    } catch (err) {
+      logger.error('Failed to load hotels:', err)
+    } finally {
+      setLoadingHotels(false)
+    }
+  }, [])
 
   const loadStaffMember = useCallback(async () => {
     if (!staffId) return
@@ -72,11 +94,27 @@ export default function EditStaffMemberPage() {
       if (abortController.signal.aborted) return
       
       setUser(userData)
+      
+      // Set department
+      if (userData.department) {
+        setDepartment(userData.department as 'kitchen' | 'bar' | 'both')
+      }
+
+      // Load assigned hotels
+      const { data: assignments } = await supabase
+        .from('hotel_users')
+        .select('hotel_id')
+        .eq('user_id', staffId)
+        .eq('is_deleted', false)
+
+      if (assignments) {
+        setSelectedHotelIds(assignments.map((a: any) => a.hotel_id))
+      }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         return
       }
-      console.error('Failed to load staff member:', err)
+      logger.error('Failed to load staff member:', err)
       setError(err instanceof Error ? err.message : 'Failed to load staff member')
     } finally {
       if (!abortController.signal.aborted) {
@@ -106,14 +144,41 @@ export default function EditStaffMemberPage() {
         throw new Error('Please enter a valid email address')
       }
 
+      // Hotel assignment validation
+      if (selectedHotelIds.length === 0) {
+        throw new Error('At least one hotel must be assigned')
+      }
+
       const userData = {
         name: textToJson(name.trim()),
         email: email.trim(),
         phone: phone ? phone.replace(/\D/g, '') : null,
+        department: department || null,
         updated_at: new Date().toISOString(),
       }
 
       await updateUser(user.id, userData)
+
+      // Update hotel assignments
+      const { data: currentAssignments } = await supabase
+        .from('hotel_users')
+        .select('hotel_id')
+        .eq('user_id', user.id)
+        .eq('is_deleted', false)
+
+      const currentHotelIds = currentAssignments?.map((a: any) => a.hotel_id) || []
+
+      // Remove from hotels that are no longer selected
+      const toRemove = currentHotelIds.filter((id: string) => !selectedHotelIds.includes(id))
+      await Promise.all(
+        toRemove.map((hotelId: string) => removeUserFromHotel(hotelId, user.id))
+      )
+
+      // Add to newly selected hotels
+      const toAdd = selectedHotelIds.filter((id: string) => !currentHotelIds.includes(id))
+      await Promise.all(
+        toAdd.map((hotelId: string) => addUserToHotel(hotelId, user.id))
+      )
       
       // Navigate back to staff list
       router.push('/staff')
@@ -122,7 +187,21 @@ export default function EditStaffMemberPage() {
       setError(errorMessage)
       setIsSubmitting(false)
     }
-  }, [user, name, email, phone, router])
+  }, [user, name, email, phone, department, selectedHotelIds, router])
+
+  const toggleHotelSelection = useCallback((hotelId: string) => {
+    setSelectedHotelIds(prev => {
+      if (prev.includes(hotelId)) {
+        return prev.filter(id => id !== hotelId)
+      } else {
+        return [...prev, hotelId]
+      }
+    })
+  }, [])
+
+  const isHotelSelected = useCallback((hotelId: string) => {
+    return selectedHotelIds.includes(hotelId)
+  }, [selectedHotelIds])
 
   const handleCancel = useCallback(() => {
     router.push('/staff')
@@ -137,15 +216,7 @@ export default function EditStaffMemberPage() {
     return user ? extractTextFromJson(user.name) : ''
   }, [user])
 
-  // Check if form has changes
-  const hasChanges = useMemo(() => {
-    if (!user) return false
-    return (
-      name !== defaultName ||
-      email !== defaultEmail ||
-      phone !== defaultPhone
-    )
-  }, [user, name, email, phone, defaultName, defaultEmail, defaultPhone])
+  // Note: hasChanges check removed - hotel assignment changes will be handled on submit
 
   if (loading) {
     return (
@@ -209,7 +280,7 @@ export default function EditStaffMemberPage() {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !hasChanges}
+            disabled={isSubmitting}
             className="bg-gray-900 text-white hover:bg-gray-800 px-4 py-2 rounded-lg flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -272,7 +343,7 @@ export default function EditStaffMemberPage() {
                 label="Email Address *"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => setEmail(formatEmail(e.target.value))}
                 placeholder="maria@grandhotel.com"
                 required
                 error={!email.trim() && error ? 'Email Address is required' : undefined}
@@ -285,6 +356,72 @@ export default function EditStaffMemberPage() {
                 onChange={handlePhoneChange}
                 placeholder="+1 (555) 100-0001"
               />
+
+              {/* Department Selection (only for staff role) */}
+              {user.role_id === 'staff' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    value={department || ''}
+                    onChange={(e) => setDepartment(e.target.value === '' ? null : e.target.value as 'kitchen' | 'bar' | 'both')}
+                  >
+                    <option value="">Not Assigned</option>
+                    <option value="kitchen">Kitchen</option>
+                    <option value="bar">Bar</option>
+                    <option value="both">Both (Kitchen & Bar)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Select department for kitchen/bar staff. Kitchen staff see food orders, bar staff see drink orders.
+                  </p>
+                </div>
+              )}
+
+              {/* Hotel Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Assign to Hotels <span className="text-red-500">*</span>
+                </label>
+                {loadingHotels ? (
+                  <p className="text-sm text-gray-500">Loading hotels...</p>
+                ) : availableHotels.length === 0 ? (
+                  <p className="text-sm text-gray-500">No hotels available. Please contact an administrator.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {availableHotels.map((hotel) => {
+                      const hotelName = extractTextFromJson(hotel.title)
+                      const isSelected = isHotelSelected(hotel.id)
+                      
+                      return (
+                        <label
+                          key={hotel.id}
+                          className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'border-gray-900 bg-gray-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleHotelSelection(hotel.id)}
+                            className="w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900"
+                          />
+                          <span className="ml-3 text-sm font-medium text-gray-900">{hotelName}</span>
+                          {hotel.site && (
+                            <span className="ml-auto text-xs text-gray-500">{hotel.site}</span>
+                          )}
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+                {selectedHotelIds.length === 0 && error && (
+                  <p className="mt-1 text-sm text-red-600">At least one hotel must be selected</p>
+                )}
+              </div>
 
               <p className="text-xs text-gray-500 mt-4">* Required fields</p>
             </div>
@@ -313,13 +450,13 @@ export default function EditStaffMemberPage() {
         >
           Cancel
         </button>
-        <button
-          onClick={handleSubmit}
-          disabled={isSubmitting || !hasChanges}
-          className="bg-gray-900 text-white hover:bg-gray-800 px-4 py-2 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isSubmitting ? 'Saving...' : 'Save Changes'}
-        </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="bg-gray-900 text-white hover:bg-gray-800 px-4 py-2 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          </button>
       </div>
     </div>
   )

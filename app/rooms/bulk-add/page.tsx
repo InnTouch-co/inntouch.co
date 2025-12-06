@@ -8,26 +8,12 @@ import { getCurrentUserClient } from '@/lib/auth/auth-client'
 import { supabase } from '@/lib/supabase/client'
 import { getHotelById } from '@/lib/database/hotels'
 import { createRoomsBatch, getRooms } from '@/lib/database/rooms'
-import { textToJson } from '@/lib/utils/json-text'
 import { extractTextFromJson } from '@/lib/utils/json-text'
+import { logger } from '@/lib/utils/logger'
 
 export const dynamic = 'force-dynamic'
 
 type RoomStatus = 'available' | 'occupied' | 'cleaning' | 'maintenance'
-
-const AMENITIES_OPTIONS = [
-  { id: 'wifi', label: 'WiFi', icon: '📶' },
-  { id: 'tv', label: 'TV', icon: '📺' },
-  { id: 'ac', label: 'AC', icon: '❄️' },
-  { id: 'coffee', label: 'Coffee Maker', icon: '☕' },
-  { id: 'minibar', label: 'Minibar', icon: '🍷' },
-  { id: 'safe', label: 'Safe', icon: '🔒' },
-  { id: 'balcony', label: 'Balcony', icon: '🌅' },
-  { id: 'bathtub', label: 'Bathtub', icon: '🛁' },
-]
-
-const BED_TYPES = ['Single', 'Double', 'Queen', 'King', 'Twin']
-const ROOM_TYPES = ['Standard', 'Deluxe', 'Suite', 'Executive', 'Presidential']
 
 function BulkAddRoomsForm() {
   const router = useRouter()
@@ -45,13 +31,7 @@ function BulkAddRoomsForm() {
 
   const [formData, setFormData] = useState({
     room_numbers: '',
-    room_type: 'Standard',
-    floor: '',
-    bed_type: 'Queen',
-    max_occupancy: '2',
-    nightly_rate: '',
     status: 'available' as RoomStatus,
-    amenities: [] as string[],
   })
 
   useEffect(() => {
@@ -90,7 +70,7 @@ function BulkAddRoomsForm() {
         setSelectedHotel(userHotels[0].id)
       }
     } catch (error) {
-      console.error('Failed to load user/hotels:', error)
+      logger.error('Failed to load user/hotels:', error)
     } finally {
       setLoading(false)
     }
@@ -102,7 +82,7 @@ function BulkAddRoomsForm() {
       const hotel = await getHotelById(selectedHotel)
       setCurrentHotel(hotel)
     } catch (error) {
-      console.error('Failed to load hotel:', error)
+      logger.error('Failed to load hotel:', error)
     }
   }
 
@@ -112,7 +92,7 @@ function BulkAddRoomsForm() {
       const roomsData = await getRooms(selectedHotel)
       setRooms(roomsData)
     } catch (error) {
-      console.error('Failed to load rooms:', error)
+      logger.error('Failed to load rooms:', error)
     }
   }
 
@@ -143,14 +123,6 @@ function BulkAddRoomsForm() {
     return roomNumbers
   }
 
-  const toggleAmenity = (amenityId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      amenities: prev.amenities.includes(amenityId)
-        ? prev.amenities.filter(a => a !== amenityId)
-        : [...prev.amenities, amenityId]
-    }))
-  }
 
   const handleSubmit = async () => {
     if (!selectedHotel) {
@@ -233,13 +205,7 @@ function BulkAddRoomsForm() {
       const roomsToCreate = roomNumbers.map(roomNumber => ({
         hotel_id: selectedHotel,
         room_number: roomNumber,
-        room_type: textToJson(formData.room_type),
-        floor: formData.floor ? parseInt(formData.floor) : null,
-        capacity: parseInt(formData.max_occupancy) || 2,
         status: formData.status,
-        amenities: formData.amenities,
-        price_per_night: formData.nightly_rate ? parseFloat(formData.nightly_rate) : null,
-        bed_type: formData.bed_type || null,
       }))
 
       // Batch create rooms for better performance
@@ -256,7 +222,7 @@ function BulkAddRoomsForm() {
 
       router.push('/rooms')
     } catch (error: any) {
-      console.error('Failed to create rooms:', error)
+      logger.error('Failed to create rooms:', error)
       setError(error.message || 'Failed to create rooms')
     } finally {
       setSubmitting(false)
@@ -326,116 +292,20 @@ function BulkAddRoomsForm() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Room Type *
-                </label>
-                <select
-                  value={formData.room_type}
-                  onChange={(e) => setFormData({ ...formData, room_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {ROOM_TYPES.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Floor
-                </label>
-                <input
-                  type="number"
-                  value={formData.floor}
-                  onChange={(e) => setFormData({ ...formData, floor: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="1"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Bed Type
-                </label>
-                <select
-                  value={formData.bed_type}
-                  onChange={(e) => setFormData({ ...formData, bed_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {BED_TYPES.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max Occupancy
-                </label>
-                <input
-                  type="number"
-                  value={formData.max_occupancy}
-                  onChange={(e) => setFormData({ ...formData, max_occupancy: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  min="1"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nightly Rate ($)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.nightly_rate}
-                  onChange={(e) => setFormData({ ...formData, nightly_rate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="150.00"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as RoomStatus })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="available">Available</option>
-                  <option value="occupied">Occupied</option>
-                  <option value="cleaning">Cleaning</option>
-                  <option value="maintenance">Maintenance</option>
-                </select>
-              </div>
-            </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Amenities
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Status
               </label>
-              <div className="grid grid-cols-4 gap-2">
-                {AMENITIES_OPTIONS.map(amenity => (
-                  <button
-                    key={amenity.id}
-                    type="button"
-                    onClick={() => toggleAmenity(amenity.id)}
-                    className={`p-2 rounded-lg border text-xs transition-colors ${
-                      formData.amenities.includes(amenity.id)
-                        ? 'bg-blue-50 border-blue-300 text-blue-700'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="text-lg mb-1">{amenity.icon}</div>
-                    <div>{amenity.label}</div>
-                  </button>
-                ))}
-              </div>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as RoomStatus })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="available">Available</option>
+                <option value="occupied">Occupied</option>
+                <option value="cleaning">Cleaning</option>
+                <option value="maintenance">Maintenance</option>
+              </select>
             </div>
           </div>
 

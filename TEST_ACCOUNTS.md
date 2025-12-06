@@ -48,8 +48,8 @@ All emails use Gmail aliases - they all go to your main inbox: `inntouch.co@gmai
 ### General Staff
 | Name | Email | Role | Purpose |
 |------|-------|------|---------|
-| Staff 1 | `inntouch.co+staff1@gmail.com` | staff | Basic staff member |
-| Staff 2 | `inntouch.co+staff2@gmail.com` | staff | Second staff member |
+| Staff 1 | `inntouch.co+kitchen_staff1@gmail.com` | staff | Basic staff member |
+| Staff 2 | `inntouch.co+bar_staff1@gmail.com` | staff | Second staff member |
 | Staff 3 | `inntouch.co+staff3@gmail.com` | staff | Third staff member |
 
 ---

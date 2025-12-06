@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { extractTextFromJson, textToJson } from '@/lib/utils/json-text'
+import { formatPhoneNumber } from '@/lib/utils/phone-mask'
+import { formatEmail } from '@/lib/utils/email-validation'
 import { getUsers } from '@/lib/database/users'
 import { getHotelUsers, addUserToHotel, removeUserFromHotel } from '@/lib/database/hotel-users'
 import type { Hotel, HotelInsert, User } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 interface HotelFormProps {
   hotel?: Hotel
@@ -42,7 +45,7 @@ export function HotelForm({ hotel, onSubmit, onCancel }: HotelFormProps) {
       const users = await getUsers()
       setAvailableUsers(users)
     } catch (err) {
-      console.error('Failed to load users:', err)
+      logger.error('Failed to load users:', err)
     } finally {
       setLoadingUsers(false)
     }
@@ -55,7 +58,7 @@ export function HotelForm({ hotel, onSubmit, onCancel }: HotelFormProps) {
       const userIds = hotelUsers.map((hu: any) => hu.user_id)
       setSelectedUserIds(userIds)
     } catch (err) {
-      console.error('Failed to load hotel users:', err)
+      logger.error('Failed to load hotel users:', err)
     }
   }
 
@@ -123,7 +126,8 @@ export function HotelForm({ hotel, onSubmit, onCancel }: HotelFormProps) {
         label="Email"
         type="email"
         value={formData.email}
-        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+        onChange={(e) => setFormData({ ...formData, email: formatEmail(e.target.value) })}
+        placeholder="info@hotel.com"
       />
 
       <Input
@@ -137,8 +141,8 @@ export function HotelForm({ hotel, onSubmit, onCancel }: HotelFormProps) {
         label="Phone"
         type="tel"
         value={formData.phone}
-        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-        placeholder="Enter hotel phone number"
+        onChange={(e) => setFormData({ ...formData, phone: formatPhoneNumber(e.target.value) })}
+        placeholder="+1 (555) 123-4567"
       />
 
       <Input

@@ -5,6 +5,7 @@ import { sendInvitationEmail } from '@/lib/auth/email'
 import { createUser } from '@/lib/database/users'
 import { textToJson } from '@/lib/utils/json-text'
 import { addUserToHotel } from '@/lib/database/hotel-users'
+import { logger } from '@/lib/utils/logger'
 
 /**
  * Generate a random password
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, email, phone, active, hotelIds, role_id } = body
+    const { name, email, phone, active, hotelIds, role_id, department } = body
 
     if (!name || !email) {
       return NextResponse.json(
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
       utype_id: 'staff',
       active: active ?? 1,
       role_id: staffRole,
+      department: department || null,
       must_change_password: true, // Force password change on first login
     })
 
@@ -136,7 +138,7 @@ export async function POST(request: NextRequest) {
       })
     } catch (emailError) {
       // User created but email failed
-      console.error('Failed to send invitation email:', emailError)
+      logger.error('Failed to send invitation email:', emailError)
       return NextResponse.json({
         user: userData,
         password,
@@ -151,7 +153,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
 
   } catch (error) {
-    console.error('Error creating staff member:', error)
+    logger.error('Error creating staff member:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to create staff member' },
       { status: 500 }

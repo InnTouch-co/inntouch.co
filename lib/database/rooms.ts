@@ -4,19 +4,33 @@ import type { Room } from '@/types/database-extended'
 export async function getRooms(hotelId: string) {
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, hotel_id, room_number, room_type, floor, capacity, status, amenities, price_per_night, images, bed_type, is_deleted, created_at, updated_at')
+    .select('id, hotel_id, room_number, status, images, is_deleted, created_at, updated_at')
     .eq('hotel_id', hotelId)
     .eq('is_deleted', false)
-    .order('room_number', { ascending: true })
 
   if (error) throw error
-  return data as Room[]
+
+  // Sort numerically by room number
+  const sortedData = (data || []).sort((a, b) => {
+    // Extract numeric parts from room numbers
+    const numA = parseInt(a.room_number.replace(/\D/g, '')) || 0
+    const numB = parseInt(b.room_number.replace(/\D/g, '')) || 0
+    
+    // If numeric parts are equal, sort alphabetically
+    if (numA === numB) {
+      return a.room_number.localeCompare(b.room_number)
+    }
+    
+    return numA - numB
+  })
+
+  return sortedData as Room[]
 }
 
 export async function getRoomById(id: string) {
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, hotel_id, room_number, room_type, floor, capacity, status, amenities, price_per_night, images, bed_type, is_deleted, created_at, updated_at')
+    .select('id, hotel_id, room_number, status, images, is_deleted, created_at, updated_at')
     .eq('id', id)
     .single()
 
@@ -27,14 +41,57 @@ export async function getRoomById(id: string) {
 export async function createRoom(room: {
   hotel_id: string
   room_number: string
-  room_type: any
-  floor?: number | null
-  capacity: number
   status: string
-  amenities?: any
-  price_per_night?: number | null
-  bed_type?: string | null
 }) {
+  // First check if there's an active (non-deleted) room with the same number
+  const { data: activeRoom, error: activeCheckError } = await supabase
+    .from('rooms')
+    .select('id')
+    .eq('hotel_id', room.hotel_id)
+    .eq('room_number', room.room_number)
+    .eq('is_deleted', false)
+    .maybeSingle()
+
+  if (activeCheckError && activeCheckError.code !== 'PGRST116') {
+    throw activeCheckError
+  }
+
+  // If active room exists, throw error
+  if (activeRoom) {
+    throw new Error('Room number already exists for this hotel')
+  }
+
+  // Check if there's a soft-deleted room with the same number
+  const { data: deletedRoom, error: deletedCheckError } = await supabase
+    .from('rooms')
+    .select('id')
+    .eq('hotel_id', room.hotel_id)
+    .eq('room_number', room.room_number)
+    .eq('is_deleted', true)
+    .maybeSingle()
+
+  if (deletedCheckError && deletedCheckError.code !== 'PGRST116') {
+    throw deletedCheckError
+  }
+
+  // If soft-deleted room exists, restore it instead of creating new one
+  if (deletedRoom) {
+    const { data, error } = await supabase
+      .from('rooms')
+      .update({
+        status: room.status,
+        is_deleted: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', deletedRoom.id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data as Room
+  }
+
+  // Otherwise, create new room
   const { data, error } = await supabase
     .from('rooms')
     .insert(room)
@@ -49,13 +106,7 @@ export async function createRoom(room: {
 export async function createRoomsBatch(rooms: Array<{
   hotel_id: string
   room_number: string
-  room_type: any
-  floor?: number | null
-  capacity: number
   status: string
-  amenities?: any
-  price_per_night?: number | null
-  bed_type?: string | null
 }>) {
   // Supabase supports batch insert up to 1000 rows
   const batchSize = 100
@@ -77,13 +128,7 @@ export async function createRoomsBatch(rooms: Array<{
 
 export async function updateRoom(id: string, room: Partial<{
   room_number: string
-  room_type: any
-  floor?: number | null
-  capacity: number
   status: string
-  amenities?: any
-  price_per_night?: number | null
-  bed_type?: string | null
 }>) {
   const { data, error } = await supabase
     .from('rooms')

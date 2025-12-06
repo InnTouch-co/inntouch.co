@@ -1,10 +1,11 @@
 import { supabase } from '@/lib/supabase/client'
 import type { Hotel, HotelInsert } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 export async function getHotels() {
   const { data, error } = await supabase
     .from('hotels')
-    .select('id, title, site, email, logo_path, address, phone, active, room_count, created_at, updated_at')
+    .select('id, title, site, email, logo_path, address, phone, active, room_count, created_at, updated_at, guest_settings, timezone')
     .order('created_at', { ascending: false })
 
   if (error) throw error
@@ -32,7 +33,7 @@ export async function getHotels() {
 
   if (userCountsError || roomCountsError) {
     // Fallback to individual queries if batch fails
-    console.warn('Batch query failed, using individual queries')
+    logger.warn('Batch query failed, using individual queries')
   }
 
   // Count occurrences by hotel_id
@@ -71,11 +72,24 @@ export async function getHotels() {
 export async function getHotelById(id: string) {
   const { data, error } = await supabase
     .from('hotels')
-    .select('id, title, site, email, logo_path, address, phone, active, room_count, created_at, updated_at')
+    .select('id, title, site, email, logo_path, address, phone, active, room_count, created_at, updated_at, guest_settings, timezone')
     .eq('id', id)
     .single()
 
-  if (error) throw error
+  if (error) {
+    logger.error('Supabase error in getHotelById:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint
+    })
+    throw error
+  }
+  
+  if (!data) {
+    throw new Error(`Hotel with ID ${id} not found`)
+  }
+  
   return data as Hotel
 }
 

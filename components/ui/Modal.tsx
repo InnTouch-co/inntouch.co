@@ -1,18 +1,18 @@
 'use client'
 
 import React, { useEffect } from 'react'
-import { Button } from './Button'
 
 interface ModalProps {
   isOpen: boolean
   onClose: () => void
   title: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'large'
   closeOnOutsideClick?: boolean
+  zIndex?: number
 }
 
-export function Modal({ isOpen, onClose, title, children, size = 'md', closeOnOutsideClick = true }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, size = 'md', closeOnOutsideClick = true, zIndex = 50 }: ModalProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden'
@@ -28,14 +28,18 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', closeOnOu
 
   const sizes = {
     sm: 'max-w-md',
+    large: 'max-w-5xl',
     md: 'max-w-2xl',
     lg: 'max-w-4xl'
   }
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}
+      className="fixed inset-0 flex items-center justify-center p-4"
+      style={{ 
+        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        zIndex: zIndex
+      }}
       onClick={(e) => {
         if (closeOnOutsideClick && e.target === e.currentTarget) {
           onClose()
@@ -78,4 +82,3 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', closeOnOu
     </div>
   )
 }
-

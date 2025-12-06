@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase/client'
 import { extractTextFromJson } from '@/lib/utils/json-text'
 import { getRooms } from '@/lib/database/rooms'
 import type { Room } from '@/types/database-extended'
+import { logger } from '@/lib/utils/logger'
 
 const REQUEST_TYPES = [
   { id: 'food', name: 'Room Service' },
@@ -123,9 +124,9 @@ function NewServiceRequestForm() {
         .map((assignment: any) => assignment.hotels)
         .filter((hotel): hotel is any => Boolean(hotel) && typeof hotel === 'object' && 'id' in hotel)
       
-      console.log('Service Request New - Hotel assignments:', hotelAssignments)
-      console.log('Service Request New - User ID:', currentUser.id)
-      console.log('Service Request New - Filtered hotels:', userHotels)
+      logger.info('Service Request New - Hotel assignments:', hotelAssignments)
+      logger.info('Service Request New - User ID:', currentUser.id)
+      logger.info('Service Request New - Filtered hotels:', userHotels)
       
       setHotels(userHotels)
 
@@ -133,7 +134,7 @@ function NewServiceRequestForm() {
         setError(`No hotels assigned to your account. User ID: ${currentUser.id}. Please contact an administrator.`)
       }
     } catch (error) {
-      console.error('Failed to load user/hotels:', error)
+      logger.error('Failed to load user/hotels:', error)
       setError('Failed to load hotel information')
     } finally {
       setLoading(false)
@@ -148,7 +149,7 @@ function NewServiceRequestForm() {
       const roomsData = await getRooms(selectedHotel)
       setRooms(roomsData)
     } catch (error) {
-      console.error('Failed to load rooms:', error)
+      logger.error('Failed to load rooms:', error)
     } finally {
       setLoadingRooms(false)
     }
@@ -171,7 +172,7 @@ function NewServiceRequestForm() {
     setError('')
 
     try {
-      console.log('Creating service request with:', {
+      logger.info('Creating service request with:', {
         hotel_id: selectedHotel,
         room_id: roomId,
         request_type: requestType,
@@ -201,7 +202,7 @@ function NewServiceRequestForm() {
       const responseData = await response.json()
 
       if (!response.ok) {
-        console.error('API Error:', responseData)
+        logger.error('API Error:', responseData)
         throw new Error(responseData.error || 'Failed to create service request')
       }
 
@@ -209,7 +210,7 @@ function NewServiceRequestForm() {
       router.push('/service-requests')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to create service request'
-      console.error('Error creating service request:', error)
+      logger.error('Error creating service request:', error)
       setError(errorMessage)
       setIsCreating(false)
     }

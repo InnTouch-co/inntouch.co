@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceRequests, getServiceRequestStats } from '@/lib/database/service-requests'
+import { logger } from '@/lib/utils/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (userError || !currentUserData) {
-      console.error('Error loading user or user not found:', userError)
+      logger.error('Error loading user or user not found:', userError)
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (hotelUserError) {
-      console.error('Error checking hotel assignment:', hotelUserError)
+      logger.error('Error checking hotel assignment:', hotelUserError)
       return NextResponse.json({ error: 'Error verifying hotel access' }, { status: 500 })
     }
 
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(requests)
 
   } catch (error) {
-    console.error('Error fetching service requests:', error)
+    logger.error('Error fetching service requests:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to fetch service requests' },
       { status: 500 }

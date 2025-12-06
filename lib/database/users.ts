@@ -4,7 +4,7 @@ import type { User, UserInsert } from '@/types/database'
 export async function getUsers() {
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, email, phone, email_verified_at, utype_id, role_id, active, is_deleted, must_change_password, created_at, updated_at')
+    .select('id, name, email, phone, email_verified_at, utype_id, role_id, active, is_deleted, must_change_password, department, created_at, updated_at')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
 
@@ -15,7 +15,7 @@ export async function getUsers() {
 export async function getUserById(id: string) {
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, email, phone, email_verified_at, utype_id, role_id, active, is_deleted, must_change_password, created_at, updated_at')
+    .select('id, name, email, phone, email_verified_at, utype_id, role_id, active, is_deleted, must_change_password, department, created_at, updated_at')
     .eq('id', id)
     .single()
 

@@ -9,6 +9,7 @@ import { extractTextFromJson } from '@/lib/utils/json-text'
 import { formatPhoneNumber } from '@/lib/utils/phone-mask'
 import { getRoleDisplayName } from '@/lib/auth/roles'
 import type { User } from '@/types/database'
+import { logger } from '@/lib/utils/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,7 +56,7 @@ export default function UserViewPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load user data')
-      console.error('Error loading user:', err)
+      logger.error('Error loading user:', err)
       router.push('/users')
     } finally {
       setLoading(false)

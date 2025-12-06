@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { getCurrentUserClient } from '@/lib/auth/auth-client'
 
 interface PasswordChangeModalProps {
   isOpen: boolean
@@ -16,14 +17,36 @@ export function PasswordChangeModal({ isOpen, onSuccess }: PasswordChangeModalPr
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isNewUser, setIsNewUser] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      checkIfNewUser()
+    }
+  }, [isOpen])
+
+  const checkIfNewUser = async () => {
+    try {
+      const user = await getCurrentUserClient()
+      setIsNewUser(user?.must_change_password === true)
+    } catch (error) {
+      // Default to requiring current password if we can't check
+      setIsNewUser(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
-    // Validation
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setError('All fields are required')
+    // Validation - for new users, current password is optional
+    if (!isNewUser && !currentPassword) {
+      setError('Current password is required')
+      return
+    }
+
+    if (!newPassword || !confirmPassword) {
+      setError('New password and confirmation are required')
       return
     }
 
@@ -37,7 +60,7 @@ export function PasswordChangeModal({ isOpen, onSuccess }: PasswordChangeModalPr
       return
     }
 
-    if (currentPassword === newPassword) {
+    if (!isNewUser && currentPassword === newPassword) {
       setError('New password must be different from current password')
       return
     }
@@ -51,8 +74,9 @@ export function PasswordChangeModal({ isOpen, onSuccess }: PasswordChangeModalPr
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          currentPassword,
+          currentPassword: isNewUser ? undefined : currentPassword,
           newPassword,
+          isNewUser,
         }),
       })
 
@@ -85,9 +109,11 @@ export function PasswordChangeModal({ isOpen, onSuccess }: PasswordChangeModalPr
       closeOnOutsideClick={false}
     >
       <div className="space-y-4">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-          <p className="text-sm text-blue-800">
-            <strong>Security Notice:</strong> You must change your password before continuing. This is required for your account security.
+        <div className={`${isNewUser ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-4 mb-4`}>
+          <p className={`text-sm ${isNewUser ? 'text-green-800' : 'text-blue-800'}`}>
+            <strong>{isNewUser ? 'Welcome!' : 'Security Notice:'}</strong> {isNewUser 
+              ? 'Please set your password to continue. Use the temporary password from your invitation email as your current password.'
+              : 'You must change your password before continuing. This is required for your account security.'}
           </p>
         </div>
 
@@ -98,15 +124,28 @@ export function PasswordChangeModal({ isOpen, onSuccess }: PasswordChangeModalPr
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Current Password"
-            type="password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            placeholder="Enter your current password"
-            required
-            autoFocus
-          />
+          {!isNewUser && (
+            <Input
+              label="Current Password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter your current password"
+              required
+              autoFocus
+            />
+          )}
+          {isNewUser && (
+            <Input
+              label="Temporary Password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Enter the temporary password from your email"
+              required
+              autoFocus
+            />
+          )}
 
           <Input
             label="New Password"

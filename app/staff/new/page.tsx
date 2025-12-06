@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { extractTextFromJson, textToJson } from '@/lib/utils/json-text'
 import { formatPhoneNumber } from '@/lib/utils/phone-mask'
+import { formatEmail } from '@/lib/utils/email-validation'
 import { getCurrentUserClient } from '@/lib/auth/auth-client'
 import { supabase } from '@/lib/supabase/client'
 import { getRoleDisplayName } from '@/lib/auth/roles'
+import { logger } from '@/lib/utils/logger'
 
 type TabType = 'general' | 'schedule'
 
@@ -39,6 +41,7 @@ function AddStaffMemberForm() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState<string>('staff')
+  const [department, setDepartment] = useState<'kitchen' | 'bar' | 'both' | null>(null)
   const [status, setStatus] = useState<number>(1)
 
   // Load user and hotels
@@ -88,7 +91,7 @@ function AddStaffMemberForm() {
         setSelectedHotelIds([userHotels[0].id])
       }
     } catch (err) {
-      console.error('Failed to load user/hotels:', err)
+      logger.error('Failed to load user/hotels:', err)
       setError(err instanceof Error ? err.message : 'Failed to load data')
     } finally {
       setLoading(false)
@@ -134,6 +137,7 @@ function AddStaffMemberForm() {
           phone: phone ? phone.replace(/\D/g, '') : null,
           active: status,
           role_id: role,
+          department: department || null,
           hotelIds: selectedHotelIds,
         }),
       })
@@ -159,7 +163,7 @@ function AddStaffMemberForm() {
       setError(errorMessage)
       setIsSubmitting(false)
     }
-  }, [name, email, phone, status, role, selectedHotelIds, router])
+  }, [name, email, phone, status, role, department, selectedHotelIds, router])
 
   const handleCancel = useCallback(() => {
     router.push('/staff')
@@ -287,7 +291,7 @@ function AddStaffMemberForm() {
                 label="Email Address *"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => setEmail(formatEmail(e.target.value))}
                 placeholder="maria@grandhotel.com"
                 required
                 error={!email.trim() && error ? 'Email Address is required' : undefined}
@@ -320,6 +324,28 @@ function AddStaffMemberForm() {
                   Select the role for this staff member. Only non-admin roles are available.
                 </p>
               </div>
+
+              {/* Department Selection (only for staff role) */}
+              {role === 'staff' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    value={department || ''}
+                    onChange={(e) => setDepartment(e.target.value === '' ? null : e.target.value as 'kitchen' | 'bar' | 'both')}
+                  >
+                    <option value="">Not Assigned</option>
+                    <option value="kitchen">Kitchen</option>
+                    <option value="bar">Bar</option>
+                    <option value="both">Both (Kitchen & Bar)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Select department for kitchen/bar staff. Kitchen staff see food orders, bar staff see drink orders.
+                  </p>
+                </div>
+              )}
 
               {/* Hotel Selection */}
               <div>
