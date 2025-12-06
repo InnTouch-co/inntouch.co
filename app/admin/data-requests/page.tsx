@@ -247,21 +247,21 @@ export default function DataRequestsPage() {
         <div className="flex gap-2 flex-wrap">
           <Button
             onClick={() => setFilter('all')}
-            variant={filter === 'all' ? 'default' : 'outline'}
+            variant={filter === 'all' ? 'primary' : 'outline'}
             className="text-xs sm:text-sm"
           >
             All
           </Button>
           <Button
             onClick={() => setFilter('pending')}
-            variant={filter === 'pending' ? 'default' : 'outline'}
+            variant={filter === 'pending' ? 'primary' : 'outline'}
             className="text-xs sm:text-sm"
           >
             Pending
           </Button>
           <Button
             onClick={() => setFilter('completed')}
-            variant={filter === 'completed' ? 'default' : 'outline'}
+            variant={filter === 'completed' ? 'primary' : 'outline'}
             className="text-xs sm:text-sm"
           >
             Completed

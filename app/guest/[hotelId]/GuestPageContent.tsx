@@ -66,15 +66,11 @@ export function GuestPageContent() {
                   for (const service of services) {
                     if (service.type === item.serviceType || (!item.serviceType && service.menu)) {
                       // Check if this service has the menu item
-                      if (service.menu) {
+                      if (service.menu && Array.isArray(service.menu)) {
                         const menuItems: any[] = []
-                        if (Array.isArray(service.menu)) {
-                          service.menu.forEach((cat: any) => {
-                            if (cat.items) menuItems.push(...cat.items)
-                          })
-                        } else if (service.menu.items) {
-                          menuItems.push(...service.menu.items)
-                        }
+                        service.menu.forEach((cat: any) => {
+                          if (cat.items) menuItems.push(...cat.items)
+                        })
                         
                         const hasItem = menuItems.some((mi: any) => 
                           mi.id === item.menuItem.id || mi.name === item.menuItem.name
@@ -360,7 +356,7 @@ export function GuestPageContent() {
         guest_name: order.guestName,
         guest_phone: order.guestPhone,
         items: order.items.map(item => ({
-          id: item.menuItem?.id || item.id,
+          id: item.menuItem?.id || '',
           quantity: item.quantity,
         })),
         total: order.total,

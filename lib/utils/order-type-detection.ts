@@ -112,7 +112,7 @@ export function getOrderTypeLabels(types: OrderType[]): string[] {
       case 'room_service_order':
         return 'Room Service'
       default:
-        return type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
+        return (type as string).replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
     }
   })
 }

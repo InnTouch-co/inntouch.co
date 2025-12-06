@@ -53,7 +53,7 @@ interface Folio {
 export default function FolioPage() {
   const router = useRouter()
   const selectedHotel = useSelectedHotel()
-  const hotelTimezone = useHotelTimezone(selectedHotel?.id)
+  const hotelTimezone = useHotelTimezone(selectedHotel || undefined)
   const [user, setUser] = useState<any>(null)
   const [folios, setFolios] = useState<Folio[]>([])
   const [loading, setLoading] = useState(true)

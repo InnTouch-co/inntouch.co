@@ -75,24 +75,24 @@ export async function PATCH(
 
     // Send WhatsApp notifications for status changes (non-blocking)
     if (status === 'ready') {
-      if (order.guest_phone) {
+      if (order.guest_phone && order.room_number) {
         messagingLogger.debug('OrderStatusAPI', `Triggering order ready notification for ${order.order_number}`)
         sendOrderReadyNotification(order.order_number, order.room_number, order.guest_phone)
           .catch(error => {
             messagingLogger.error('OrderStatusAPI', error, `Failed to send order ready notification for ${order.order_number}`)
           })
       } else {
-        messagingLogger.warn('OrderStatusAPI', `Order ${order.order_number} marked as ready but no guest phone number`)
+        messagingLogger.warn('OrderStatusAPI', `Order ${order.order_number} marked as ready but no guest phone number or room number`)
       }
     } else if (status === 'delivered') {
-      if (order.guest_phone) {
+      if (order.guest_phone && order.room_number) {
         messagingLogger.debug('OrderStatusAPI', `Triggering order delivered notification for ${order.order_number}`)
         sendOrderDeliveredNotification(order.order_number, order.room_number, order.guest_phone)
           .catch(error => {
             messagingLogger.error('OrderStatusAPI', error, `Failed to send order delivered notification for ${order.order_number}`)
           })
       } else {
-        messagingLogger.warn('OrderStatusAPI', `Order ${order.order_number} marked as delivered but no guest phone number`)
+        messagingLogger.warn('OrderStatusAPI', `Order ${order.order_number} marked as delivered but no guest phone number or room number`)
       }
     }
 

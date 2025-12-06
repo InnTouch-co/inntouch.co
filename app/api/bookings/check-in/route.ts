@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
     if (guest_phone) {
       try {
         const hotel = await getHotelById(hotel_id)
-        const hotelName = hotel.title || 'Hotel'
+        const hotelName = typeof hotel.title === 'string' ? hotel.title : 'Hotel'
         
         // Construct guest site link
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'

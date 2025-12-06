@@ -43,7 +43,7 @@ export default function RoomsPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const selectedHotel = useSelectedHotel()
-  const hotelTimezone = useHotelTimezone(selectedHotel?.id)
+  const hotelTimezone = useHotelTimezone(selectedHotel || undefined)
   const [currentHotel, setCurrentHotel] = useState<any>(null)
   const [rooms, setRooms] = useState<Room[]>([])
   const [stats, setStats] = useState({
@@ -83,10 +83,10 @@ export default function RoomsPage() {
   
   // Initialize dates with hotel timezone
   useEffect(() => {
-    if (selectedHotel?.id) {
+    if (selectedHotel) {
       const initializeDates = async () => {
         try {
-          const response = await fetch(`/api/hotels/${selectedHotel.id}/timezone`)
+          const response = await fetch(`/api/hotels/${selectedHotel}/timezone`)
           const data = await response.json()
           const timezone = data.timezone || 'America/Chicago'
           
@@ -121,7 +121,7 @@ export default function RoomsPage() {
       
       initializeDates()
     }
-  }, [selectedHotel?.id])
+  }, [selectedHotel])
   const [showOrdersModal, setShowOrdersModal] = useState<{ roomId: string; roomNumber: string } | null>(null)
   const [orders, setOrders] = useState<any[]>([])
   const [loadingOrders, setLoadingOrders] = useState(false)
@@ -791,7 +791,7 @@ export default function RoomsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Quick Filters</label>
                     <div className="flex flex-wrap gap-2">
                       <Button
-                        variant={smartFilter === 'checked_in_today' ? 'default' : 'outline'}
+                        variant={smartFilter === 'checked_in_today' ? 'primary' : 'outline'}
                         size="sm"
                         onClick={() => setSmartFilter(smartFilter === 'checked_in_today' ? 'none' : 'checked_in_today')}
                         className={`text-xs ${smartFilter === 'checked_in_today' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}`}
@@ -799,7 +799,7 @@ export default function RoomsPage() {
                         Today's Check-Ins
                       </Button>
                       <Button
-                        variant={smartFilter === 'checking_out_today' ? 'default' : 'outline'}
+                        variant={smartFilter === 'checking_out_today' ? 'primary' : 'outline'}
                         size="sm"
                         onClick={() => setSmartFilter(smartFilter === 'checking_out_today' ? 'none' : 'checking_out_today')}
                         className={`text-xs ${smartFilter === 'checking_out_today' ? 'bg-orange-600 text-white hover:bg-orange-700' : ''}`}
@@ -807,7 +807,7 @@ export default function RoomsPage() {
                         Today's Check-Outs
                       </Button>
                       <Button
-                        variant={smartFilter === 'occupied' ? 'default' : 'outline'}
+                        variant={smartFilter === 'occupied' ? 'primary' : 'outline'}
                         size="sm"
                         onClick={() => setSmartFilter(smartFilter === 'occupied' ? 'none' : 'occupied')}
                         className={`text-xs ${smartFilter === 'occupied' ? 'bg-purple-600 text-white hover:bg-purple-700' : ''}`}
@@ -815,7 +815,7 @@ export default function RoomsPage() {
                         Occupied Rooms
                       </Button>
                       <Button
-                        variant={smartFilter === 'pending_orders' ? 'default' : 'outline'}
+                        variant={smartFilter === 'pending_orders' ? 'primary' : 'outline'}
                         size="sm"
                         onClick={() => setSmartFilter(smartFilter === 'pending_orders' ? 'none' : 'pending_orders')}
                         className={`text-xs ${smartFilter === 'pending_orders' ? 'bg-yellow-600 text-white hover:bg-yellow-700' : ''}`}
@@ -823,7 +823,7 @@ export default function RoomsPage() {
                         Pending Orders
                       </Button>
                       <Button
-                        variant={smartFilter === 'overdue_checkout' ? 'default' : 'outline'}
+                        variant={smartFilter === 'overdue_checkout' ? 'primary' : 'outline'}
                         size="sm"
                         onClick={() => setSmartFilter(smartFilter === 'overdue_checkout' ? 'none' : 'overdue_checkout')}
                         className={`text-xs ${smartFilter === 'overdue_checkout' ? 'bg-red-600 text-white hover:bg-red-700' : ''}`}
@@ -1375,12 +1375,15 @@ export default function RoomsPage() {
               <div className="text-sm text-gray-700 space-y-1">
                 <p><strong>Guest:</strong> {roomDetails[showCheckOutModal.id]?.guest_info?.name || 'N/A'}</p>
                 <p><strong>Room:</strong> {showCheckOutModal.room_number}</p>
-                {roomDetails[showCheckOutModal.id]?.guest_info && (
-                  <>
-                    <p><strong>Check-In:</strong> {new Date(roomDetails[showCheckOutModal.id].guest_info.check_in_date).toLocaleDateString()}</p>
-                    <p><strong>Check-Out:</strong> {new Date(roomDetails[showCheckOutModal.id].guest_info.check_out_date).toLocaleDateString()}</p>
-                  </>
-                )}
+                {(() => {
+                  const guestInfo = roomDetails[showCheckOutModal.id]?.guest_info
+                  return guestInfo ? (
+                    <>
+                      <p><strong>Check-In:</strong> {new Date(guestInfo.check_in_date).toLocaleDateString()}</p>
+                      <p><strong>Check-Out:</strong> {new Date(guestInfo.check_out_date).toLocaleDateString()}</p>
+                    </>
+                  ) : null
+                })()}
               </div>
             </div>
 

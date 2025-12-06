@@ -80,7 +80,7 @@ export async function createOrder(orderData: OrderInsert): Promise<Order> {
   const supabase = await createClient()
 
   // Generate order number with retry logic to handle race conditions
-  let orderNumber: string
+  let orderNumber: string = ''
   let attempts = 0
   const maxAttempts = 5
   

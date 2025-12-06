@@ -224,7 +224,10 @@ export default function FrontDeskDashboard() {
             {/* Room Status Widget */}
             <div className="mb-6">
               <RoomStatusWidget
-                stats={stats?.rooms || { total: 0, available: 0, occupied: 0, maintenance: 0 }}
+                total={stats?.rooms?.total || 0}
+                available={stats?.rooms?.available || 0}
+                occupied={stats?.rooms?.occupied || 0}
+                maintenance={stats?.rooms?.maintenance || 0}
                 loading={statsLoading}
               />
             </div>
@@ -232,7 +235,10 @@ export default function FrontDeskDashboard() {
             {/* Service Requests Widget */}
             <div className="mb-6">
               <ServiceRequestsWidget
-                stats={stats?.serviceRequests || { pending: 0, inProgress: 0, completedToday: 0, avgResponseMinutes: 0 }}
+                pending={stats?.serviceRequests?.pending || 0}
+                inProgress={stats?.serviceRequests?.inProgress || 0}
+                completedToday={stats?.serviceRequests?.completedToday || 0}
+                avgResponseMinutes={stats?.serviceRequests?.avgResponseMinutes || 0}
                 loading={statsLoading}
               />
             </div>

@@ -146,6 +146,9 @@ export async function sendMessage(
  * @returns Account information if connection is successful
  */
 export async function verifyConnection() {
+  if (!accountSid) {
+    throw new Error('Twilio account SID is not configured')
+  }
   try {
     const account = await client.api.accounts(accountSid).fetch()
     return {

@@ -20,6 +20,7 @@ interface BarOrder {
   items: any[]
   item_count: number
   total_amount: number
+  subtotal?: number
   created_at: string
   created_at_formatted: string
   minutes_waiting: number

@@ -364,7 +364,7 @@ export async function PATCH(
 
     // Send WhatsApp notifications for status changes (non-blocking)
     if (status === 'ready' || status === 'delivered') {
-      if (allReady && status === 'ready' && order.guest_phone) {
+      if (allReady && status === 'ready' && order.guest_phone && order.room_number) {
         messagingLogger.debug('OrderStatusAPI', `Triggering order ready notification for ${order.order_number}`)
         sendOrderReadyNotification(order.order_number, order.room_number, order.guest_phone)
           .catch(error => {
@@ -372,7 +372,7 @@ export async function PATCH(
           })
       }
 
-      if (allDelivered && status === 'delivered' && order.guest_phone) {
+      if (allDelivered && status === 'delivered' && order.guest_phone && order.room_number) {
         messagingLogger.debug('OrderStatusAPI', `Triggering order delivered notification for ${order.order_number}`)
         sendOrderDeliveredNotification(order.order_number, order.room_number, order.guest_phone)
           .catch(error => {

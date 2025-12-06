@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
 
-export default function VerifyDataRequestPage() {
+function VerifyDataRequestContent() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'expired'>('loading')
@@ -93,6 +93,22 @@ export default function VerifyDataRequestPage() {
         )}
       </Card>
     </div>
+  )
+}
+
+export default function VerifyDataRequestPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <Loader2 className="w-16 h-16 text-blue-600 mx-auto mb-4 animate-spin" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Loading...</h1>
+          <p className="text-gray-600">Please wait...</p>
+        </Card>
+      </div>
+    }>
+      <VerifyDataRequestContent />
+    </Suspense>
   )
 }
 

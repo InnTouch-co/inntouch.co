@@ -1,15 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
-import { Download, Trash2, Cookie, ArrowLeft, FileText } from 'lucide-react'
+import { Download, Trash2, Cookie, ArrowLeft, FileText, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { logger } from '@/lib/utils/logger'
 import { CookieConsentBanner } from '@/components/legal/CookieConsentBanner'
 import { getOrCreateSessionId } from '@/lib/utils/session-id'
 
-export default function PrivacySettingsPage() {
+function PrivacySettingsContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -289,5 +289,20 @@ export default function PrivacySettingsPage() {
         roomNumber={roomNumber || undefined}
       />
     </div>
+  )
+}
+
+export default function PrivacySettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 max-w-md">
+          <Loader2 className="w-8 h-8 text-blue-400 mx-auto mb-4 animate-spin" />
+          <p className="text-gray-300 text-center text-sm">Loading...</p>
+        </div>
+      </div>
+    }>
+      <PrivacySettingsContent />
+    </Suspense>
   )
 }

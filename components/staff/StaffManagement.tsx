@@ -90,7 +90,7 @@ export function StaffManagement() {
           const staffData: StaffUser = {
             ...s,
             hotel_name: hotelName,
-            department: getDepartmentFromRole(s.role_id),
+            department: (getDepartmentFromRole(s.role_id) as 'kitchen' | 'bar' | 'both' | undefined) || undefined,
             status: 'active', // Would come from actual status field
             rating: 4.7 + Math.random() * 0.3, // Mock rating, would come from actual data
             tasks_completed: Math.floor(Math.random() * 300), // Mock tasks, would come from actual data

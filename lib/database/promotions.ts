@@ -500,10 +500,15 @@ export async function calculateItemDiscount(
     
     // Get current day of week in hotel timezone
     const now = new Date()
-    const currentDay = parseInt(now.toLocaleDateString('en-US', { 
+    const dayName = now.toLocaleDateString('en-US', { 
       timeZone: hotelTimezone, 
-      weekday: 'numeric' 
-    })) % 7
+      weekday: 'long' 
+    }).toLowerCase()
+    const dayMap: Record<string, number> = {
+      'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
+      'thursday': 4, 'friday': 5, 'saturday': 6
+    }
+    const currentDay = dayMap[dayName] ?? 0
 
     // Get all active promotions to check for menu item discounts
     const { data: allPromotions, error: promoError } = await supabase

@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     // Note: Minimum order is checked per service type's subtotal if items have different service types
     const uniqueServiceTypes = [...new Set(items.map((i: any) => i.service_type).filter(Boolean))]
     
-    let minOrderCheck = { meetsMinimum: true, promotionId: null, minOrderAmount: null }
+    let minOrderCheck: { meetsMinimum: boolean; promotionId: string | null; minOrderAmount: number | null } = { meetsMinimum: true, promotionId: null, minOrderAmount: null }
     
     if (uniqueServiceTypes.length === 1) {
       // All items from same service, check minimum order for that service type
