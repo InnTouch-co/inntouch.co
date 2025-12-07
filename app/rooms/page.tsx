@@ -1378,10 +1378,10 @@ export default function RoomsPage() {
                 {(() => {
                   const guestInfo = roomDetails[showCheckOutModal.id]?.guest_info
                   return guestInfo ? (
-                    <>
+                  <>
                       <p><strong>Check-In:</strong> {new Date(guestInfo.check_in_date).toLocaleDateString()}</p>
                       <p><strong>Check-Out:</strong> {new Date(guestInfo.check_out_date).toLocaleDateString()}</p>
-                    </>
+                  </>
                   ) : null
                 })()}
               </div>

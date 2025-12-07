@@ -68,9 +68,9 @@ export function GuestPageContent() {
                       // Check if this service has the menu item
                       if (service.menu && Array.isArray(service.menu)) {
                         const menuItems: any[] = []
-                        service.menu.forEach((cat: any) => {
-                          if (cat.items) menuItems.push(...cat.items)
-                        })
+                          service.menu.forEach((cat: any) => {
+                            if (cat.items) menuItems.push(...cat.items)
+                          })
                         
                         const hasItem = menuItems.some((mi: any) => 
                           mi.id === item.menuItem.id || mi.name === item.menuItem.name

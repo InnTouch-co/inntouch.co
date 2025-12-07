@@ -220,7 +220,8 @@ export function Sidebar() {
 
       {/* Desktop: Vertical Sidebar */}
       <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 flex-col z-50">
-        {/* Logo Section */}
+        {/* Logo Section - Hidden for super admin */}
+        {!isSuperAdmin && (
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-center h-full">
             {(() => {
@@ -249,6 +250,7 @@ export function Sidebar() {
             })()}
           </div>
         </div>
+        )}
 
         {/* Navigation Items */}
         <HotelSelector />
